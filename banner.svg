@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="50%" style="stop-color:#dc2626"/>
+      <stop offset="100%" style="stop-color:#991b1b"/>
+    </linearGradient>
+    <linearGradient id="iconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fbbf24"/>
+      <stop offset="100%" style="stop-color:#f97316"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="300" rx="16" fill="url(#bg)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.06">
+    <line x1="0" y1="50" x2="1200" y2="50" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="100" x2="1200" y2="100" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="150" x2="1200" y2="150" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="200" x2="1200" y2="200" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="250" x2="1200" y2="250" stroke="#fff" stroke-width="1"/>
+    <line x1="200" y1="0" x2="200" y2="300" stroke="#fff" stroke-width="1"/>
+    <line x1="400" y1="0" x2="400" y2="300" stroke="#fff" stroke-width="1"/>
+    <line x1="600" y1="0" x2="600" y2="300" stroke="#fff" stroke-width="1"/>
+    <line x1="800" y1="0" x2="800" y2="300" stroke="#fff" stroke-width="1"/>
+    <line x1="1000" y1="0" x2="1000" y2="300" stroke="#fff" stroke-width="1"/>
+  </g>
+
+  <!-- Radar/scan icon -->
+  <g transform="translate(100, 150)">
+    <!-- Outer circle -->
+    <circle cx="0" cy="0" r="65" fill="none" stroke="url(#iconGrad)" stroke-width="3" opacity="0.4"/>
+    <!-- Middle circle -->
+    <circle cx="0" cy="0" r="45" fill="none" stroke="url(#iconGrad)" stroke-width="2.5" opacity="0.6"/>
+    <!-- Inner circle -->
+    <circle cx="0" cy="0" r="25" fill="none" stroke="url(#iconGrad)" stroke-width="2" opacity="0.8"/>
+    <!-- Center dot -->
+    <circle cx="0" cy="0" r="5" fill="#fbbf24"/>
+    <!-- Sweep line -->
+    <line x1="0" y1="0" x2="55" y2="-35" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+    <!-- Detection dots -->
+    <circle cx="30" cy="-20" r="4" fill="#ef4444" opacity="0.9"/>
+    <circle cx="-15" cy="35" r="3.5" fill="#f97316" opacity="0.8"/>
+    <circle cx="45" cy="15" r="3" fill="#eab308" opacity="0.7"/>
+    <!-- Crosshair -->
+    <line x1="-70" y1="0" x2="-55" y2="0" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
+    <line x1="55" y1="0" x2="70" y2="0" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
+    <line x1="0" y1="-70" x2="0" y2="-55" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
+    <line x1="0" y1="55" x2="0" y2="70" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
+  </g>
+
+  <!-- Title text -->
+  <text x="220" y="120" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="48" font-weight="700" fill="#ffffff" letter-spacing="-1">
+    DAST Scanner
+  </text>
+
+  <!-- Subtitle -->
+  <text x="220" y="165" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="20" fill="#fed7aa" letter-spacing="0.5">
+    Dynamic Application Security Testing
+  </text>
+
+  <!-- Description -->
+  <text x="220" y="205" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" fill="#fde68a" opacity="0.85">
+    Active web security scanner | OWASP Top 10 | 58 checks | Crawl + Inject + Report
+  </text>
+
+  <!-- Tags -->
+  <g transform="translate(220, 230)">
+    <rect x="0" y="0" width="68" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="34" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">Python</text>
+
+    <rect x="78" y="0" width="88" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="122" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">OWASP Top 10</text>
+
+    <rect x="176" y="0" width="64" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="208" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">SQLi</text>
+
+    <rect x="250" y="0" width="54" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="277" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">XSS</text>
+
+    <rect x="314" y="0" width="62" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="345" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">SSRF</text>
+
+    <rect x="386" y="0" width="54" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="413" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">JWT</text>
+
+    <rect x="450" y="0" width="54" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="477" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">XXE</text>
+  </g>
+
+  <!-- Version badge -->
+  <g transform="translate(1070, 30)">
+    <rect x="0" y="0" width="90" height="28" rx="14" fill="#ffffff" opacity="0.2"/>
+    <text x="45" y="19" font-family="monospace" font-size="13" fill="#fff" text-anchor="middle" font-weight="600">v1.0.0</text>
+  </g>
+</svg>
