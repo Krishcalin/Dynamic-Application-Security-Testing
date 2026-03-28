@@ -33,7 +33,7 @@ from urllib.parse import (
     parse_qs, quote, urlencode, urljoin, urlparse, urlunparse,
 )
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # ── Graceful dependency check ────────────────────────────────────────────────
 try:
@@ -48,7 +48,7 @@ except ImportError:
 #  CONSTANTS
 # ════════════════════════════════════════════════════════════════════════════════
 
-USER_AGENT = "DAST-Scanner/1.1.0"
+USER_AGENT = "DAST-Scanner/1.2.0"
 CANARY = "SKYHIGH"  # Non-executable marker for reflection detection
 MAX_BODY_SNIPPET = 2000
 DEFAULT_TIMEOUT = 15
@@ -2396,6 +2396,463 @@ def check_cache_poisoning(client: HTTPClient, sitemap: SiteMap, target: str) -> 
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: KNOWN CVEs  (DAST-CVE-001 .. 010)
+# ════════════════════════════════════════════════════════════════════════════════
+
+LOG4J_PATTERNS = [
+    r"org\.apache\.logging\.log4j",
+    r"JndiLookup",
+    r"log4j2\.formatMsgNoLookups",
+    r"com\.sun\.jndi",
+    r"\$\{jndi:",
+]
+
+SPRING4SHELL_PATTERNS = [
+    r"java\.lang\.ProcessBuilder",
+    r"class\.module\.classLoader",
+    r"AbstractNestablePropertyAccessor",
+    r"org\.springframework\.beans",
+]
+
+STRUTS_PATTERNS = [
+    r"ognl\.OgnlException",
+    r"struts2",
+    r"org\.apache\.struts",
+    r"freemarker\.template",
+]
+
+ACTUATOR_PATHS = [
+    ("/actuator", r'"_links"', "DAST-CVE-009", "Spring Boot Actuator root"),
+    ("/actuator/env", r'"propertySources"', "DAST-CVE-009", "Actuator /env (secrets)"),
+    ("/actuator/heapdump", None, "DAST-CVE-009", "Actuator /heapdump (memory dump)"),
+    ("/actuator/mappings", r'"dispatcherServlets"', "DAST-CVE-009", "Actuator /mappings"),
+    ("/actuator/configprops", r'"contexts"', "DAST-CVE-009", "Actuator /configprops"),
+]
+
+
+def check_known_cves(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect high-impact known CVEs via targeted probes."""
+
+    parsed = urlparse(target)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+
+    # ── DAST-CVE-001: Log4Shell (CVE-2021-44228) ──
+    log4j_payload = "${jndi:ldap://127.0.0.1:1389/test}"
+    for url in list(sitemap.urls)[:10]:
+        for header_name in ("User-Agent", "X-Forwarded-For", "Referer", "X-Api-Version"):
+            resp = client.get(url, headers={header_name: log4j_payload})
+            if resp is None:
+                continue
+            body = resp.text[:MAX_BODY_SNIPPET]
+            for pat in LOG4J_PATTERNS:
+                if re.search(pat, body, re.I):
+                    yield Finding(
+                        rule_id="DAST-CVE-001", name="Log4Shell (CVE-2021-44228)",
+                        category="Known CVE", severity="CRITICAL",
+                        url=url, method="GET", parameter=header_name,
+                        payload=log4j_payload,
+                        evidence=re.search(pat, body, re.I).group()[:200],
+                        description="Application may be vulnerable to Log4Shell (JNDI injection via Log4j).",
+                        recommendation="Upgrade Log4j to 2.17.1+. Set log4j2.formatMsgNoLookups=true.",
+                        cwe="CWE-917", owasp="A06:2021 Vulnerable and Outdated Components",
+                    )
+                    break
+    # Also test via URL params
+    for url in _urls_with_params(sitemap):
+        for param, _ in _get_params(url):
+            test_url = _inject_param(url, param, log4j_payload)
+            resp = client.get(test_url)
+            if resp and any(re.search(p, resp.text[:MAX_BODY_SNIPPET], re.I) for p in LOG4J_PATTERNS):
+                yield Finding(
+                    rule_id="DAST-CVE-001", name="Log4Shell via URL parameter",
+                    category="Known CVE", severity="CRITICAL",
+                    url=test_url, method="GET", parameter=param,
+                    payload=log4j_payload, evidence="Log4j pattern in response",
+                    description="JNDI lookup payload processed in URL parameter — potential Log4Shell.",
+                    recommendation="Upgrade Log4j to 2.17.1+. Sanitize all logged user input.",
+                    cwe="CWE-917", owasp="A06:2021 Vulnerable and Outdated Components",
+                )
+                break
+
+    # ── DAST-CVE-002: Spring4Shell (CVE-2022-22965) ──
+    spring_payload = "class.module.classLoader.resources.context.parent.pipeline.first.pattern=DAST_SPRING4SHELL"
+    for url in list(sitemap.urls)[:5]:
+        resp = client.post(url, data=spring_payload,
+                           headers={"Content-Type": "application/x-www-form-urlencoded"})
+        if resp is None:
+            continue
+        body = resp.text[:MAX_BODY_SNIPPET]
+        for pat in SPRING4SHELL_PATTERNS:
+            if re.search(pat, body, re.I):
+                yield Finding(
+                    rule_id="DAST-CVE-002", name="Spring4Shell (CVE-2022-22965)",
+                    category="Known CVE", severity="CRITICAL",
+                    url=url, method="POST", parameter="class.module.classLoader",
+                    payload=spring_payload[:100],
+                    evidence=re.search(pat, body, re.I).group()[:200],
+                    description="Application may be vulnerable to Spring4Shell (ClassLoader manipulation).",
+                    recommendation="Upgrade Spring Framework to 5.3.18+ / 5.2.20+. Upgrade to JDK 9+ with module restrictions.",
+                    cwe="CWE-94", owasp="A06:2021 Vulnerable and Outdated Components",
+                )
+                break
+
+    # ── DAST-CVE-003: Apache Struts RCE (CVE-2017-5638) ──
+    struts_ct = "%{(#_='multipart/form-data').(#_memberAccess=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS)}"
+    resp = client.post(target, data="test",
+                       headers={"Content-Type": struts_ct})
+    if resp:
+        body = resp.text[:MAX_BODY_SNIPPET]
+        for pat in STRUTS_PATTERNS:
+            if re.search(pat, body, re.I):
+                yield Finding(
+                    rule_id="DAST-CVE-003", name="Apache Struts RCE (CVE-2017-5638)",
+                    category="Known CVE", severity="CRITICAL",
+                    url=target, method="POST", parameter="Content-Type",
+                    payload=struts_ct[:100],
+                    evidence=re.search(pat, body, re.I).group()[:200],
+                    description="Application may process OGNL expressions in Content-Type header (Apache Struts).",
+                    recommendation="Upgrade Apache Struts to 2.5.10.1+ or 2.3.32+.",
+                    cwe="CWE-94", owasp="A06:2021 Vulnerable and Outdated Components",
+                )
+                break
+
+    # ── DAST-CVE-004: Text4Shell (CVE-2022-42889) ──
+    text4_payloads = ["${script:javascript:java.lang.Runtime}", "${url:UTF-8:https://127.0.0.1}",
+                      "${dns:address|127.0.0.1}"]
+    for url in _urls_with_params(sitemap):
+        for param, _ in _get_params(url):
+            for payload in text4_payloads:
+                test_url = _inject_param(url, param, payload)
+                resp = client.get(test_url)
+                if resp and ("commons-text" in resp.text.lower() or "StringLookup" in resp.text):
+                    yield Finding(
+                        rule_id="DAST-CVE-004", name="Text4Shell (CVE-2022-42889)",
+                        category="Known CVE", severity="HIGH",
+                        url=test_url, method="GET", parameter=param,
+                        payload=payload,
+                        evidence="Apache Commons Text lookup pattern processed",
+                        description="Application may process Apache Commons Text interpolation — potential RCE.",
+                        recommendation="Upgrade Apache Commons Text to 1.10.0+.",
+                        cwe="CWE-94", owasp="A06:2021 Vulnerable and Outdated Components",
+                    )
+                    break
+
+    # ── DAST-CVE-005: Spring Cloud Gateway RCE (CVE-2022-22947) ──
+    gateway_url = urljoin(base, "/actuator/gateway/routes")
+    resp = client.get(gateway_url)
+    if resp and resp.status_code == 200 and "route_id" in resp.text.lower():
+        yield Finding(
+            rule_id="DAST-CVE-005", name="Spring Cloud Gateway actuator exposed (CVE-2022-22947)",
+            category="Known CVE", severity="CRITICAL",
+            url=gateway_url, method="GET", parameter="path",
+            payload="/actuator/gateway/routes",
+            evidence=f"Gateway routes endpoint accessible (HTTP {resp.status_code})",
+            description="Spring Cloud Gateway actuator routes endpoint is exposed, enabling SpEL injection and RCE.",
+            recommendation="Disable or restrict access to /actuator/gateway endpoints. Upgrade Spring Cloud Gateway.",
+            cwe="CWE-94", owasp="A06:2021 Vulnerable and Outdated Components",
+        )
+
+    # ── DAST-CVE-006: Apache HTTP Server Path Traversal (CVE-2021-41773) ──
+    traversal_paths = [
+        "/cgi-bin/.%2e/%2e%2e/%2e%2e/etc/passwd",
+        "/icons/.%2e/%2e%2e/%2e%2e/etc/passwd",
+        "/.%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd",
+    ]
+    for path in traversal_paths:
+        url = urljoin(base, path)
+        resp = client.get(url)
+        if resp and re.search(r"root:.*:0:0:", resp.text):
+            yield Finding(
+                rule_id="DAST-CVE-006", name="Apache Path Traversal (CVE-2021-41773)",
+                category="Known CVE", severity="HIGH",
+                url=url, method="GET", parameter="path",
+                payload=path,
+                evidence="File /etc/passwd disclosed via path traversal",
+                description="Apache HTTP Server 2.4.49/2.4.50 path normalization bypass allows file read.",
+                recommendation="Upgrade Apache HTTP Server to 2.4.51+.",
+                cwe="CWE-22", owasp="A01:2021 Broken Access Control",
+            )
+            break
+
+    # ── DAST-CVE-007: MOVEit Transfer detection ──
+    moveit_paths = ["/human.aspx", "/api/v1/token", "/guestaccess.aspx"]
+    for path in moveit_paths:
+        url = urljoin(base, path)
+        resp = client.get(url)
+        if resp and resp.status_code in (200, 302) and ("MOVEit" in resp.text or "moveit" in resp.text.lower()):
+            yield Finding(
+                rule_id="DAST-CVE-007", name="MOVEit Transfer instance detected (CVE-2023-34362 risk)",
+                category="Known CVE", severity="CRITICAL",
+                url=url, method="GET", parameter="path",
+                payload=path,
+                evidence="MOVEit Transfer application detected",
+                description="MOVEit Transfer instance found. Verify patched against CVE-2023-34362 (SQL injection / RCE).",
+                recommendation="Ensure MOVEit Transfer is updated to latest patch. Review for IOCs from CL0P ransomware.",
+                cwe="CWE-89", owasp="A06:2021 Vulnerable and Outdated Components",
+            )
+            break
+
+    # ── DAST-CVE-008: GitLab GraphQL SSRF (CVE-2021-22214) ──
+    gitlab_graphql = urljoin(base, "/-/graphql")
+    resp = client.post(gitlab_graphql, json={"query": "{currentUser{username}}"})
+    if resp and resp.status_code == 200 and "data" in resp.text:
+        yield Finding(
+            rule_id="DAST-CVE-008", name="GitLab GraphQL endpoint exposed (CVE-2021-22214 risk)",
+            category="Known CVE", severity="HIGH",
+            url=gitlab_graphql, method="POST", parameter="query",
+            payload='{"query":"{currentUser{username}}"}',
+            evidence=f"GitLab GraphQL responds to queries (HTTP {resp.status_code})",
+            description="GitLab GraphQL endpoint accessible. Test for SSRF via CI lint API (CVE-2021-22214).",
+            recommendation="Restrict access to GitLab GraphQL. Ensure patched against SSRF vulnerabilities.",
+            cwe="CWE-918", owasp="A10:2021 SSRF",
+        )
+
+    # ── DAST-CVE-009: Spring Boot Actuator exposure ──
+    for path, pattern, rule_id, name in ACTUATOR_PATHS:
+        url = urljoin(base, path)
+        resp = client.get(url)
+        if resp is None or resp.status_code not in (200,):
+            continue
+        if pattern is None or re.search(pattern, resp.text):
+            yield Finding(
+                rule_id=rule_id, name=f"Spring Boot {name} exposed",
+                category="Known CVE", severity="HIGH",
+                url=url, method="GET", parameter="path",
+                payload=path,
+                evidence=f"Actuator endpoint accessible (HTTP {resp.status_code})",
+                description=f"Spring Boot Actuator endpoint {path} is publicly accessible, exposing sensitive configuration.",
+                recommendation="Restrict Actuator endpoints to management port. Require authentication.",
+                cwe="CWE-200", owasp="A05:2021 Security Misconfiguration",
+            )
+
+    # ── DAST-CVE-010: Apache Tomcat Manager exposure ──
+    tomcat_paths = [
+        ("/manager/html", r"Tomcat (Web Application|Manager)"),
+        ("/host-manager/html", r"Tomcat (Host|Virtual)"),
+        ("/manager/status", r"Server Status"),
+    ]
+    for path, pattern in tomcat_paths:
+        url = urljoin(base, path)
+        resp = client.get(url)
+        if resp and (resp.status_code in (200, 401) and re.search(pattern, resp.text, re.I)):
+            sev = "CRITICAL" if resp.status_code == 200 else "HIGH"
+            yield Finding(
+                rule_id="DAST-CVE-010", name=f"Apache Tomcat Manager ({path})",
+                category="Known CVE", severity=sev,
+                url=url, method="GET", parameter="path",
+                payload=path,
+                evidence=f"Tomcat Manager accessible (HTTP {resp.status_code})",
+                description=f"Apache Tomcat Manager at {path} is {'unauthenticated' if resp.status_code == 200 else 'exposed'}. Enables WAR deployment and RCE.",
+                recommendation="Remove or restrict Tomcat Manager. Use strong credentials. Bind to localhost only.",
+                cwe="CWE-200", owasp="A05:2021 Security Misconfiguration",
+            )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: CMS VULNERABILITIES  (DAST-CMS-001 .. 008)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def check_cms(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect WordPress, Joomla, and Drupal specific vulnerabilities."""
+
+    parsed = urlparse(target)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    tech = sitemap.tech if hasattr(sitemap, "tech") and sitemap.tech else {}
+    cms = (tech.get("cms") or "").lower()
+
+    # ── CMS Detection (from crawl or probing) ──
+    detected_wp = cms == "wordpress"
+    detected_joomla = cms == "joomla"
+    detected_drupal = cms == "drupal"
+
+    # Fallback detection if crawler didn't identify CMS
+    if not (detected_wp or detected_joomla or detected_drupal):
+        resp = client.get(target)
+        if resp:
+            body = resp.text[:5000].lower()
+            if "wp-content" in body or "wp-includes" in body:
+                detected_wp = True
+            elif "joomla" in body or "/administrator/" in body:
+                detected_joomla = True
+            elif "drupal" in body or "sites/default" in body:
+                detected_drupal = True
+
+    # ══════ WordPress Checks ══════
+    if detected_wp:
+        # ── DAST-CMS-001: WordPress XML-RPC ──
+        xmlrpc_url = urljoin(base, "/xmlrpc.php")
+        xmlrpc_body = '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>'
+        resp = client.post(xmlrpc_url, data=xmlrpc_body,
+                           headers={"Content-Type": "application/xml"})
+        if resp and resp.status_code == 200 and "methodResponse" in resp.text:
+            yield Finding(
+                rule_id="DAST-CMS-001", name="WordPress XML-RPC enabled",
+                category="CMS", severity="HIGH",
+                url=xmlrpc_url, method="POST", parameter="xmlrpc.php",
+                payload="system.listMethods",
+                evidence="XML-RPC responds to system.listMethods",
+                description="WordPress XML-RPC is enabled, allowing brute-force attacks (system.multicall) and DDoS amplification (pingback).",
+                recommendation="Disable XML-RPC via plugin or .htaccess. Use REST API instead.",
+                cwe="CWE-307", owasp="A07:2021 Identification and Authentication Failures",
+            )
+
+        # ── DAST-CMS-002: WordPress user enumeration ──
+        for probe in ["/?author=1", "/wp-json/wp/v2/users"]:
+            url = urljoin(base, probe)
+            resp = client.get(url)
+            if resp and resp.status_code == 200:
+                if "author" in probe and ("author/" in resp.url or re.search(r"/author/[\w-]+", resp.text)):
+                    yield Finding(
+                        rule_id="DAST-CMS-002", name="WordPress user enumeration (author)",
+                        category="CMS", severity="MEDIUM",
+                        url=url, method="GET", parameter="author",
+                        payload=probe, evidence=f"Author redirect to: {resp.url[:200]}",
+                        description="WordPress author enumeration reveals usernames via /?author=N redirects.",
+                        recommendation="Install a security plugin to block author enumeration. Disable author archives.",
+                        cwe="CWE-200", owasp="A01:2021 Broken Access Control",
+                    )
+                    break
+                elif "wp-json" in probe and '"slug"' in resp.text:
+                    yield Finding(
+                        rule_id="DAST-CMS-002", name="WordPress user enumeration (REST API)",
+                        category="CMS", severity="MEDIUM",
+                        url=url, method="GET", parameter="wp-json",
+                        payload=probe, evidence="User slugs disclosed via REST API",
+                        description="WordPress REST API exposes user slugs/names without authentication.",
+                        recommendation="Restrict /wp-json/wp/v2/users to authenticated users.",
+                        cwe="CWE-200", owasp="A01:2021 Broken Access Control",
+                    )
+                    break
+
+        # ── DAST-CMS-003: WordPress debug log ──
+        debug_url = urljoin(base, "/wp-content/debug.log")
+        resp = client.get(debug_url)
+        if resp and resp.status_code == 200 and ("PHP" in resp.text or "Stack trace" in resp.text):
+            yield Finding(
+                rule_id="DAST-CMS-003", name="WordPress debug.log exposed",
+                category="CMS", severity="HIGH",
+                url=debug_url, method="GET", parameter="path",
+                payload="/wp-content/debug.log",
+                evidence="Debug log contains PHP errors and stack traces",
+                description="WordPress debug.log is publicly accessible, exposing file paths, errors, and potentially credentials.",
+                recommendation="Disable WP_DEBUG_LOG in production. Remove or restrict access to debug.log.",
+                cwe="CWE-532", owasp="A05:2021 Security Misconfiguration",
+            )
+
+        # ── DAST-CMS-004: WordPress REST API root ──
+        rest_url = urljoin(base, "/wp-json/")
+        resp = client.get(rest_url)
+        if resp and resp.status_code == 200 and "namespaces" in resp.text:
+            yield Finding(
+                rule_id="DAST-CMS-004", name="WordPress REST API publicly accessible",
+                category="CMS", severity="MEDIUM",
+                url=rest_url, method="GET", parameter="path",
+                payload="/wp-json/",
+                evidence="REST API root namespace listing accessible",
+                description="WordPress REST API root is publicly accessible, exposing available endpoints.",
+                recommendation="Restrict REST API access to authenticated users where not needed publicly.",
+                cwe="CWE-200", owasp="A05:2021 Security Misconfiguration",
+            )
+
+    # ══════ Joomla Checks ══════
+    if detected_joomla:
+        # ── DAST-CMS-005: Joomla config backup ──
+        for path in ["/configuration.php.bak", "/configuration.php~", "/configuration.php.old",
+                      "/configuration.php.save", "/configuration.php.swp"]:
+            url = urljoin(base, path)
+            resp = client.get(url)
+            if resp and resp.status_code == 200 and re.search(r"(JConfig|\$db|\$password|\$secret)", resp.text):
+                yield Finding(
+                    rule_id="DAST-CMS-005", name=f"Joomla config backup exposed ({path})",
+                    category="CMS", severity="CRITICAL",
+                    url=url, method="GET", parameter="path",
+                    payload=path,
+                    evidence="Joomla configuration file with database credentials",
+                    description=f"Joomla configuration backup file at {path} exposes database credentials and secret keys.",
+                    recommendation="Remove all backup files from web-accessible directories. Add .htaccess rules to block .bak/.old files.",
+                    cwe="CWE-530", owasp="A05:2021 Security Misconfiguration",
+                )
+                break
+
+        # ── DAST-CMS-006: Joomla registration open ──
+        reg_url = urljoin(base, "/index.php?option=com_users&view=registration")
+        resp = client.get(reg_url)
+        if resp and resp.status_code == 200 and ("registration" in resp.text.lower() and "jform" in resp.text.lower()):
+            yield Finding(
+                rule_id="DAST-CMS-006", name="Joomla user registration enabled",
+                category="CMS", severity="LOW",
+                url=reg_url, method="GET", parameter="option",
+                payload="com_users&view=registration",
+                evidence="Joomla registration form is accessible",
+                description="Joomla user self-registration is enabled, allowing anyone to create accounts.",
+                recommendation="Disable self-registration if not required (Users → Options → Allow User Registration: No).",
+                cwe="CWE-287", owasp="A07:2021 Identification and Authentication Failures",
+            )
+
+    # ══════ Drupal Checks ══════
+    if detected_drupal:
+        # ── DAST-CMS-007: Drupal user enumeration ──
+        for probe, pattern in [("/user/1", r"(member for|Profile|admin)"),
+                                ("/jsonapi/user/user", r'"type":\s*"user--user"')]:
+            url = urljoin(base, probe)
+            resp = client.get(url)
+            if resp and resp.status_code == 200 and re.search(pattern, resp.text, re.I):
+                yield Finding(
+                    rule_id="DAST-CMS-007", name=f"Drupal user enumeration ({probe})",
+                    category="CMS", severity="MEDIUM",
+                    url=url, method="GET", parameter="path",
+                    payload=probe,
+                    evidence=f"User data disclosed at {probe}",
+                    description=f"Drupal user profile or JSON:API at {probe} reveals user information.",
+                    recommendation="Restrict user profile access. Disable JSON:API for anonymous users.",
+                    cwe="CWE-200", owasp="A01:2021 Broken Access Control",
+                )
+                break
+
+    # ══════ Generic CMS Version Disclosure ══════
+    # ── DAST-CMS-008: CMS version in meta/files ──
+    version_probes = [
+        ("/readme.html", r"Version\s*([\d.]+)", "WordPress"),
+        ("/administrator/manifests/files/joomla.xml", r"<version>([\d.]+)</version>", "Joomla"),
+        ("/CHANGELOG.txt", r"Drupal\s*([\d.]+)", "Drupal"),
+        ("/core/CHANGELOG.txt", r"Drupal\s*([\d.]+)", "Drupal"),
+    ]
+    for path, pattern, cms_name in version_probes:
+        url = urljoin(base, path)
+        resp = client.get(url)
+        if resp and resp.status_code == 200:
+            m = re.search(pattern, resp.text, re.I)
+            if m:
+                yield Finding(
+                    rule_id="DAST-CMS-008", name=f"{cms_name} version disclosed ({m.group(0)[:50]})",
+                    category="CMS", severity="MEDIUM",
+                    url=url, method="GET", parameter="path",
+                    payload=path,
+                    evidence=f"{cms_name} version: {m.group(1) if m.lastindex else m.group(0)[:50]}",
+                    description=f"{cms_name} version disclosed via {path}. Attackers use version info to target known vulnerabilities.",
+                    recommendation=f"Remove or restrict access to {path}. Keep {cms_name} updated to latest version.",
+                    cwe="CWE-200", owasp="A06:2021 Vulnerable and Outdated Components",
+                )
+
+    # Also check meta generator tag
+    resp = client.get(target)
+    if resp:
+        gen_match = re.search(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\']([^"\']+)', resp.text, re.I)
+        if gen_match:
+            gen_value = gen_match.group(1)
+            if re.search(r"(WordPress|Joomla|Drupal)\s*[\d.]", gen_value, re.I):
+                yield Finding(
+                    rule_id="DAST-CMS-008", name=f"CMS version in meta generator: {gen_value[:60]}",
+                    category="CMS", severity="MEDIUM",
+                    url=target, method="GET", parameter="meta[generator]",
+                    payload="N/A", evidence=f"Meta generator: {gen_value[:100]}",
+                    description=f"CMS version disclosed in HTML meta generator tag: {gen_value}.",
+                    recommendation="Remove the generator meta tag or use a security plugin to strip it.",
+                    cwe="CWE-200", owasp="A06:2021 Vulnerable and Outdated Components",
+                )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 #  SCANNER ORCHESTRATOR
 # ════════════════════════════════════════════════════════════════════════════════
 
@@ -2417,6 +2874,8 @@ CHECK_MODULES = [
     ("WebSocket", check_websocket),
     ("OAuth", check_oauth),
     ("Cache Poisoning", check_cache_poisoning),
+    ("Known CVEs", check_known_cves),
+    ("CMS Vulnerabilities", check_cms),
 ]
 
 

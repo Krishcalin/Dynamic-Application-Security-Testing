@@ -24,7 +24,7 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 
 ## Features
 
-- **79 security checks** across 17 categories mapped to OWASP Top 10 2021
+- **97 security checks** across 19 categories mapped to OWASP Top 10 2021
 - **BFS web crawler** with configurable depth, page limits, and scope enforcement
 - **5 authentication modes** -- none, bearer, cookie, basic, form-based login
 - **WAF detection** for 8 major WAF vendors
@@ -39,7 +39,7 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 
 ---
 
-## Security Checks (79 Rules)
+## Security Checks (97 Rules)
 
 ### Injection (7 Rules)
 
@@ -205,6 +205,34 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 | DAST-CACHE-002 | Web cache deception | HIGH |
 | DAST-CACHE-003 | Cache key path normalization issue | MEDIUM |
 
+### Known CVEs (10 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-CVE-001 | Log4Shell (CVE-2021-44228) | CRITICAL |
+| DAST-CVE-002 | Spring4Shell (CVE-2022-22965) | CRITICAL |
+| DAST-CVE-003 | Apache Struts RCE (CVE-2017-5638) | CRITICAL |
+| DAST-CVE-004 | Text4Shell (CVE-2022-42889) | HIGH |
+| DAST-CVE-005 | Spring Cloud Gateway RCE (CVE-2022-22947) | CRITICAL |
+| DAST-CVE-006 | Apache Path Traversal (CVE-2021-41773) | HIGH |
+| DAST-CVE-007 | MOVEit Transfer detection (CVE-2023-34362) | CRITICAL |
+| DAST-CVE-008 | GitLab GraphQL SSRF (CVE-2021-22214) | HIGH |
+| DAST-CVE-009 | Spring Boot Actuator exposure | HIGH |
+| DAST-CVE-010 | Apache Tomcat Manager exposure | HIGH |
+
+### CMS Vulnerabilities (8 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-CMS-001 | WordPress XML-RPC enabled | HIGH |
+| DAST-CMS-002 | WordPress user enumeration | MEDIUM |
+| DAST-CMS-003 | WordPress debug.log exposed | HIGH |
+| DAST-CMS-004 | WordPress REST API exposed | MEDIUM |
+| DAST-CMS-005 | Joomla config backup exposed | CRITICAL |
+| DAST-CMS-006 | Joomla user registration enabled | LOW |
+| DAST-CMS-007 | Drupal user enumeration | MEDIUM |
+| DAST-CMS-008 | CMS version disclosure | MEDIUM |
+
 ---
 
 ## OWASP Top 10 2021 Coverage
@@ -251,7 +279,7 @@ pip install requests
 
 ```bash
 python dast_scanner.py --version
-# Output: DAST Scanner v1.1.0
+# Output: DAST Scanner v1.2.0
 ```
 
 ---
