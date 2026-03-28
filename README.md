@@ -24,7 +24,7 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 
 ## Features
 
-- **97 security checks** across 19 categories mapped to OWASP Top 10 2021
+- **109 security checks** across 22 categories mapped to OWASP Top 10 2021
 - **BFS web crawler** with configurable depth, page limits, and scope enforcement
 - **5 authentication modes** -- none, bearer, cookie, basic, form-based login
 - **WAF detection** for 8 major WAF vendors
@@ -39,7 +39,7 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 
 ---
 
-## Security Checks (97 Rules)
+## Security Checks (109 Rules)
 
 ### Injection (7 Rules)
 
@@ -233,6 +233,33 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 | DAST-CMS-007 | Drupal user enumeration | MEDIUM |
 | DAST-CMS-008 | CMS version disclosure | MEDIUM |
 
+### SSL/TLS (5 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-SSL-001 | Expired SSL certificate | HIGH |
+| DAST-SSL-002 | Self-signed or untrusted certificate | MEDIUM |
+| DAST-SSL-003 | Weak TLS version (1.0/1.1) | MEDIUM |
+| DAST-SSL-004 | Missing HSTS on HTTPS site | MEDIUM |
+| DAST-SSL-005 | Mixed content (HTTP resources on HTTPS) | LOW |
+
+### LDAP & XPath Injection (4 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-LDAP-001 | LDAP injection via URL parameters | HIGH |
+| DAST-LDAP-002 | LDAP injection via forms | HIGH |
+| DAST-XPATH-001 | XPath injection via URL parameters | HIGH |
+| DAST-XPATH-002 | XPath injection via forms | HIGH |
+
+### Host Header Attacks (3 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-HOST-001 | Host header injection reflected | HIGH |
+| DAST-HOST-002 | X-Forwarded-Host injection reflected | MEDIUM |
+| DAST-HOST-003 | Host header routing confusion | MEDIUM |
+
 ---
 
 ## OWASP Top 10 2021 Coverage
@@ -279,7 +306,7 @@ pip install requests
 
 ```bash
 python dast_scanner.py --version
-# Output: DAST Scanner v1.2.0
+# Output: DAST Scanner v1.3.0
 ```
 
 ---

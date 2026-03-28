@@ -22,8 +22,8 @@ Dynamic-Application-Security-Testing/
 
 ## Architecture
 
-- **File**: `dast_scanner.py` (~3,200 lines)
-- **Version**: 1.2.0
+- **File**: `dast_scanner.py` (~3,700 lines)
+- **Version**: 1.3.0
 - **Dependency**: `requests` (only external dependency)
 - **Python**: 3.10+
 
@@ -39,7 +39,7 @@ Dynamic-Application-Security-Testing/
 | `AuthManager` | 5 auth modes: none, bearer, cookie, basic, form |
 | `DASTScanner` | Orchestrator: crawl → WAF detect → parallel checks → report |
 
-### Check Functions (19 modules, 97 rules)
+### Check Functions (22 modules, 109 rules)
 
 | Module | Rule IDs | Count | OWASP Category |
 |--------|----------|-------|----------------|
@@ -62,6 +62,9 @@ Dynamic-Application-Security-Testing/
 | `check_cache_poisoning` | DAST-CACHE-001 to 003 | 3 | A05:2021 Security Misconfiguration |
 | `check_known_cves` | DAST-CVE-001 to 010 | 10 | A06:2021 Vulnerable Components |
 | `check_cms` | DAST-CMS-001 to 008 | 8 | A05:2021 Misconfig / A06:2021 |
+| `check_ssl_tls` | DAST-SSL-001 to 005 | 5 | A02:2021 Cryptographic Failures |
+| `check_ldap_xpath` | DAST-LDAP/XPATH-001 to 002 | 4 | A03:2021 Injection |
+| `check_host_header` | DAST-HOST-001 to 003 | 3 | A05:2021 Security Misconfiguration |
 
 ### Rule ID Format
 

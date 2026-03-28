@@ -33,7 +33,7 @@ from urllib.parse import (
     parse_qs, quote, urlencode, urljoin, urlparse, urlunparse,
 )
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 # ── Graceful dependency check ────────────────────────────────────────────────
 try:
@@ -48,7 +48,7 @@ except ImportError:
 #  CONSTANTS
 # ════════════════════════════════════════════════════════════════════════════════
 
-USER_AGENT = "DAST-Scanner/1.2.0"
+USER_AGENT = "DAST-Scanner/1.3.0"
 CANARY = "SKYHIGH"  # Non-executable marker for reflection detection
 MAX_BODY_SNIPPET = 2000
 DEFAULT_TIMEOUT = 15
@@ -2853,6 +2853,318 @@ def check_cms(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Fi
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: SSL/TLS  (DAST-SSL-001 .. 005)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def check_ssl_tls(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect SSL/TLS certificate and configuration issues."""
+
+    parsed = urlparse(target)
+    if parsed.scheme != "https":
+        return  # Skip non-HTTPS targets
+
+    # ── DAST-SSL-001: Expired certificate ──
+    try:
+        resp = requests.get(target, verify=True, timeout=10)
+    except requests.exceptions.SSLError as e:
+        err = str(e).lower()
+        if "expired" in err or "certificate has expired" in err:
+            yield Finding(
+                rule_id="DAST-SSL-001", name="Expired SSL certificate",
+                category="SSL/TLS", severity="HIGH",
+                url=target, method="GET", parameter="certificate",
+                payload="N/A", evidence=str(e)[:200],
+                description="The SSL certificate has expired. Browsers will display security warnings.",
+                recommendation="Renew the SSL certificate. Consider using Let's Encrypt for automated renewal.",
+                cwe="CWE-295", owasp="A02:2021 Cryptographic Failures",
+            )
+        # ── DAST-SSL-002: Self-signed certificate ──
+        elif "self signed" in err or "self-signed" in err or "certificate verify failed" in err:
+            yield Finding(
+                rule_id="DAST-SSL-002", name="Self-signed or untrusted SSL certificate",
+                category="SSL/TLS", severity="MEDIUM",
+                url=target, method="GET", parameter="certificate",
+                payload="N/A", evidence=str(e)[:200],
+                description="SSL certificate is self-signed or not issued by a trusted CA.",
+                recommendation="Use a certificate from a trusted Certificate Authority.",
+                cwe="CWE-295", owasp="A02:2021 Cryptographic Failures",
+            )
+    except Exception:
+        pass
+
+    # ── DAST-SSL-003: Weak TLS version ──
+    resp = client.get(target)
+    if resp is not None:
+        try:
+            # Check negotiated TLS version from urllib3 connection
+            raw = resp.raw
+            if hasattr(raw, "_connection") and raw._connection:
+                sock = getattr(raw._connection, "sock", None)
+                if sock and hasattr(sock, "version"):
+                    tls_ver = sock.version()
+                    if tls_ver and tls_ver in ("TLSv1", "TLSv1.1"):
+                        yield Finding(
+                            rule_id="DAST-SSL-003", name=f"Weak TLS version ({tls_ver})",
+                            category="SSL/TLS", severity="MEDIUM",
+                            url=target, method="GET", parameter="TLS version",
+                            payload="N/A", evidence=f"Negotiated TLS version: {tls_ver}",
+                            description=f"Server supports {tls_ver} which is deprecated and vulnerable to attacks (BEAST, POODLE).",
+                            recommendation="Disable TLS 1.0 and 1.1. Enforce TLS 1.2+ with strong cipher suites.",
+                            cwe="CWE-326", owasp="A02:2021 Cryptographic Failures",
+                        )
+        except Exception:
+            pass
+
+    # ── DAST-SSL-004: Missing HSTS on HTTPS ──
+    resp = client.get(target)
+    if resp is not None:
+        hsts = resp.headers.get("Strict-Transport-Security", "")
+        if not hsts:
+            yield Finding(
+                rule_id="DAST-SSL-004", name="Missing HSTS on HTTPS site",
+                category="SSL/TLS", severity="MEDIUM",
+                url=target, method="GET", parameter="Strict-Transport-Security",
+                payload="N/A", evidence="Strict-Transport-Security header absent",
+                description="HTTPS site does not set HSTS header, allowing downgrade attacks.",
+                recommendation="Add Strict-Transport-Security: max-age=31536000; includeSubDomains; preload",
+                cwe="CWE-319", owasp="A02:2021 Cryptographic Failures",
+            )
+
+    # ── DAST-SSL-005: Mixed content ──
+    resp = client.get(target)
+    if resp is not None:
+        body = resp.text[:10000]
+        mixed_patterns = [
+            (r'<script[^>]+src=["\']http://', "script"),
+            (r'<link[^>]+href=["\']http://', "stylesheet"),
+            (r'<iframe[^>]+src=["\']http://', "iframe"),
+        ]
+        for pattern, resource_type in mixed_patterns:
+            m = re.search(pattern, body, re.I)
+            if m:
+                yield Finding(
+                    rule_id="DAST-SSL-005", name=f"Mixed content ({resource_type} over HTTP)",
+                    category="SSL/TLS", severity="LOW",
+                    url=target, method="GET", parameter=resource_type,
+                    payload="N/A", evidence=m.group()[:200],
+                    description=f"HTTPS page loads {resource_type} resource over HTTP, enabling MitM attacks.",
+                    recommendation="Serve all resources over HTTPS. Use Content-Security-Policy: upgrade-insecure-requests.",
+                    cwe="CWE-319", owasp="A02:2021 Cryptographic Failures",
+                )
+                break  # One finding is enough
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: LDAP & XPATH INJECTION  (DAST-LDAP-001..002, DAST-XPATH-001..002)
+# ════════════════════════════════════════════════════════════════════════════════
+
+LDAP_PAYLOADS = [
+    "*)(objectClass=*",
+    "*)(&",
+    "*()|&'",
+    "admin)(&(password=*))",
+]
+
+LDAP_ERROR_PATTERNS = [
+    r"LDAPException",
+    r"javax\.naming",
+    r"ldap_search",
+    r"ldap_bind",
+    r"Invalid DN syntax",
+    r"Bad search filter",
+    r"LDAP.*error",
+    r"NamingException",
+]
+
+XPATH_PAYLOADS = [
+    "' or '1'='1",
+    "1 or 1=1",
+    "' or ''='",
+    "1' or '1'='1' or '1'='1",
+    "'] | //user/*[contains(*,'",
+]
+
+XPATH_ERROR_PATTERNS = [
+    r"XPathException",
+    r"SimpleXMLElement",
+    r"DOMXPath",
+    r"libxml",
+    r"XPathEvalError",
+    r"xmlXPathEval",
+    r"xpath\.evaluate",
+    r"javax\.xml\.xpath",
+]
+
+
+def check_ldap_xpath(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect LDAP injection and XPath injection vulnerabilities."""
+
+    # ── DAST-LDAP-001: LDAP injection via URL params ──
+    for url in _urls_with_params(sitemap):
+        for param, _ in _get_params(url):
+            for payload in LDAP_PAYLOADS[:2]:
+                test_url = _inject_param(url, param, payload)
+                resp = client.get(test_url)
+                if resp is None:
+                    continue
+                body = resp.text[:MAX_BODY_SNIPPET]
+                for pat in LDAP_ERROR_PATTERNS:
+                    m = re.search(pat, body, re.I)
+                    if m:
+                        yield Finding(
+                            rule_id="DAST-LDAP-001", name="LDAP Injection (URL parameter)",
+                            category="Injection", severity="HIGH",
+                            url=test_url, method="GET", parameter=param,
+                            payload=payload, evidence=m.group()[:200],
+                            description=f"LDAP error triggered by injecting '{payload}' into parameter '{param}'.",
+                            recommendation="Use parameterised LDAP queries. Escape special LDAP characters in user input.",
+                            cwe="CWE-90", owasp="A03:2021 Injection",
+                        )
+                        break
+
+    # ── DAST-LDAP-002: LDAP injection via forms ──
+    for form in sitemap.forms[:10]:
+        for fld in form.fields:
+            if fld.get("type") in ("hidden", "submit", "file"):
+                continue
+            fname = fld.get("name", "")
+            if not fname:
+                continue
+            for payload in LDAP_PAYLOADS[:2]:
+                data = {f.get("name", ""): f.get("value", "") for f in form.fields if f.get("name")}
+                data[fname] = payload
+                resp = client.post(form.action, data=data) if form.method == "POST" else client.get(form.action, params=data)
+                if resp is None:
+                    continue
+                body = resp.text[:MAX_BODY_SNIPPET]
+                for pat in LDAP_ERROR_PATTERNS:
+                    if re.search(pat, body, re.I):
+                        yield Finding(
+                            rule_id="DAST-LDAP-002", name="LDAP Injection (form input)",
+                            category="Injection", severity="HIGH",
+                            url=form.action, method=form.method, parameter=fname,
+                            payload=payload, evidence=re.search(pat, body, re.I).group()[:200],
+                            description=f"LDAP error triggered via form field '{fname}'.",
+                            recommendation="Use parameterised LDAP queries. Escape special characters.",
+                            cwe="CWE-90", owasp="A03:2021 Injection",
+                        )
+                        break
+
+    # ── DAST-XPATH-001: XPath injection via URL params ──
+    for url in _urls_with_params(sitemap):
+        for param, _ in _get_params(url):
+            for payload in XPATH_PAYLOADS[:2]:
+                test_url = _inject_param(url, param, payload)
+                resp = client.get(test_url)
+                if resp is None:
+                    continue
+                body = resp.text[:MAX_BODY_SNIPPET]
+                for pat in XPATH_ERROR_PATTERNS:
+                    m = re.search(pat, body, re.I)
+                    if m:
+                        yield Finding(
+                            rule_id="DAST-XPATH-001", name="XPath Injection (URL parameter)",
+                            category="Injection", severity="HIGH",
+                            url=test_url, method="GET", parameter=param,
+                            payload=payload, evidence=m.group()[:200],
+                            description=f"XPath error triggered by injecting '{payload}' into parameter '{param}'.",
+                            recommendation="Use parameterised XPath queries. Never concatenate user input into XPath expressions.",
+                            cwe="CWE-643", owasp="A03:2021 Injection",
+                        )
+                        break
+
+    # ── DAST-XPATH-002: XPath injection via forms ──
+    for form in sitemap.forms[:10]:
+        for fld in form.fields:
+            if fld.get("type") in ("hidden", "submit", "file"):
+                continue
+            fname = fld.get("name", "")
+            if not fname:
+                continue
+            for payload in XPATH_PAYLOADS[:2]:
+                data = {f.get("name", ""): f.get("value", "") for f in form.fields if f.get("name")}
+                data[fname] = payload
+                resp = client.post(form.action, data=data) if form.method == "POST" else client.get(form.action, params=data)
+                if resp is None:
+                    continue
+                body = resp.text[:MAX_BODY_SNIPPET]
+                for pat in XPATH_ERROR_PATTERNS:
+                    if re.search(pat, body, re.I):
+                        yield Finding(
+                            rule_id="DAST-XPATH-002", name="XPath Injection (form input)",
+                            category="Injection", severity="HIGH",
+                            url=form.action, method=form.method, parameter=fname,
+                            payload=payload, evidence=re.search(pat, body, re.I).group()[:200],
+                            description=f"XPath error triggered via form field '{fname}'.",
+                            recommendation="Use parameterised XPath queries. Sanitize input.",
+                            cwe="CWE-643", owasp="A03:2021 Injection",
+                        )
+                        break
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: HOST HEADER ATTACKS  (DAST-HOST-001 .. 003)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def check_host_header(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect Host header injection and routing attacks."""
+
+    evil_host = "evil.dast-host-test.example.com"
+
+    # ── DAST-HOST-001: Host header injection reflected ──
+    try:
+        resp = requests.get(target, headers={"Host": evil_host},
+                            verify=False, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+        if resp and evil_host in resp.text:
+            yield Finding(
+                rule_id="DAST-HOST-001", name="Host header injection reflected",
+                category="Host Header", severity="HIGH",
+                url=target, method="GET", parameter="Host",
+                payload=f"Host: {evil_host}",
+                evidence=f"Injected host '{evil_host}' reflected in response body",
+                description="Application reflects the Host header in response content, enabling password reset poisoning and cache poisoning.",
+                recommendation="Validate Host header against an allowlist. Use a fixed server name in application configuration.",
+                cwe="CWE-644", owasp="A05:2021 Security Misconfiguration",
+            )
+    except Exception:
+        pass
+
+    # ── DAST-HOST-002: X-Forwarded-Host injection ──
+    resp = client.get(target, headers={"X-Forwarded-Host": evil_host})
+    if resp and evil_host in resp.text:
+        yield Finding(
+            rule_id="DAST-HOST-002", name="X-Forwarded-Host injection reflected",
+            category="Host Header", severity="MEDIUM",
+            url=target, method="GET", parameter="X-Forwarded-Host",
+            payload=f"X-Forwarded-Host: {evil_host}",
+            evidence=f"Injected X-Forwarded-Host '{evil_host}' reflected in response",
+            description="Application trusts X-Forwarded-Host header, enabling host header poisoning via reverse proxy.",
+            recommendation="Ignore X-Forwarded-Host or validate it against a strict allowlist at the application level.",
+            cwe="CWE-644", owasp="A05:2021 Security Misconfiguration",
+        )
+
+    # ── DAST-HOST-003: Ambiguous routing via multiple headers ──
+    resp = client.get(target, headers={
+        "X-Forwarded-Host": evil_host,
+        "X-Host": evil_host,
+        "X-Original-URL": "/admin",
+    })
+    if resp:
+        # Check if any of the injected values affected the response
+        if evil_host in resp.text or "/admin" in resp.text.lower():
+            yield Finding(
+                rule_id="DAST-HOST-003", name="Host header routing confusion",
+                category="Host Header", severity="MEDIUM",
+                url=target, method="GET", parameter="X-Forwarded-Host / X-Original-URL",
+                payload=f"Multiple host override headers",
+                evidence="Server processes override headers affecting routing",
+                description="Application processes multiple host/routing override headers, enabling request routing manipulation.",
+                recommendation="Strip all host override headers at the reverse proxy level. Only trust Host header.",
+                cwe="CWE-644", owasp="A05:2021 Security Misconfiguration",
+            )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 #  SCANNER ORCHESTRATOR
 # ════════════════════════════════════════════════════════════════════════════════
 
@@ -2876,6 +3188,9 @@ CHECK_MODULES = [
     ("Cache Poisoning", check_cache_poisoning),
     ("Known CVEs", check_known_cves),
     ("CMS Vulnerabilities", check_cms),
+    ("SSL/TLS", check_ssl_tls),
+    ("LDAP & XPath Injection", check_ldap_xpath),
+    ("Host Header", check_host_header),
 ]
 
 
@@ -3079,6 +3394,66 @@ class DASTScanner:
         print(f"  JSON report saved: {path}")
 
     # ════════════════════════════════════════════════════════════════════════
+    #  SARIF REPORT (CI/CD — GitHub, GitLab, Azure DevOps)
+    # ════════════════════════════════════════════════════════════════════════
+    def save_sarif(self, path: str) -> None:
+        sev_map = {"CRITICAL": "error", "HIGH": "error", "MEDIUM": "warning",
+                   "LOW": "note", "INFO": "note"}
+
+        # Build unique rules array
+        seen_rules: dict = {}
+        for f in self.findings:
+            if f.rule_id not in seen_rules:
+                seen_rules[f.rule_id] = {
+                    "id": f.rule_id,
+                    "name": f.name,
+                    "shortDescription": {"text": f.name},
+                    "fullDescription": {"text": f.description[:1024]},
+                    "helpUri": f"https://cwe.mitre.org/data/definitions/{f.cwe.split('-')[1]}.html" if f.cwe.startswith("CWE-") else "",
+                    "properties": {"owasp": f.owasp, "cwe": f.cwe},
+                }
+
+        results = []
+        for f in self.findings:
+            results.append({
+                "ruleId": f.rule_id,
+                "level": sev_map.get(f.severity, "note"),
+                "message": {"text": f"{f.name}: {f.description}"},
+                "locations": [{
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": f.url},
+                    },
+                }],
+                "properties": {
+                    "severity": f.severity,
+                    "category": f.category,
+                    "parameter": f.parameter,
+                    "evidence": (f.evidence or "")[:500],
+                    "recommendation": f.recommendation,
+                },
+            })
+
+        sarif = {
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [{
+                "tool": {
+                    "driver": {
+                        "name": "DAST Scanner",
+                        "version": __version__,
+                        "informationUri": "https://github.com/Krishcalin/Dynamic-Application-Security-Testing",
+                        "rules": list(seen_rules.values()),
+                    },
+                },
+                "results": results,
+            }],
+        }
+
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(sarif, fh, indent=2, default=str)
+        print(f"  SARIF report saved: {path}")
+
+    # ════════════════════════════════════════════════════════════════════════
     #  HTML REPORT
     # ════════════════════════════════════════════════════════════════════════
     def save_html(self, path: str) -> None:
@@ -3181,6 +3556,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("target", help="Target URL to scan (e.g. https://example.com)")
     p.add_argument("--json", metavar="FILE", help="Save JSON report to FILE")
     p.add_argument("--html", metavar="FILE", help="Save HTML report to FILE")
+    p.add_argument("--sarif", metavar="FILE", help="Save SARIF report to FILE (CI/CD integration)")
     p.add_argument("--severity", default="INFO",
                    choices=["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
                    help="Minimum severity to report (default: INFO)")
@@ -3266,6 +3642,8 @@ def main() -> int:
         scanner.save_json(args.json)
     if args.html:
         scanner.save_html(args.html)
+    if args.sarif:
+        scanner.save_sarif(args.sarif)
 
     s = scanner.summary()
     return 1 if s["CRITICAL"] + s["HIGH"] > 0 else 0
