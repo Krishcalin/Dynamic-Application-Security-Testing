@@ -74,12 +74,21 @@ Dynamic-Application-Security-Testing/
 
 ```bash
 python dast_scanner.py <target_url> [--severity SEV] [--json FILE] [--html FILE]
-    [-v/--verbose] [--version] [--crawl-depth N] [--max-pages N]
+    [--sarif FILE] [-v/--verbose] [--version] [--crawl-depth N] [--max-pages N]
     [--rate-limit RPS] [--max-requests N] [--timeout SEC]
     [--no-crawl] [--verify-ssl] [--proxy URL]
     [--auth-mode MODE] [--auth-token TOKEN]
     [--login-url URL] [--login-user USER] [--login-pass PASS]
 ```
+
+### Output Formats
+
+| Format | Flag | Description |
+|--------|------|-------------|
+| Console | *(default)* | Coloured summary with severity counts |
+| JSON | `--json FILE` | Machine-readable full detail |
+| HTML | `--html FILE` | Interactive browser report (dark theme) |
+| SARIF | `--sarif FILE` | SARIF v2.1.0 for GitHub Code Scanning, GitLab SAST, Azure DevOps |
 
 ## Testing
 

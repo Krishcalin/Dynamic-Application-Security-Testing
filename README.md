@@ -31,7 +31,7 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 - **Technology fingerprinting** -- server, framework, CMS, language detection
 - **Rate limiting** with token bucket algorithm (configurable requests/second)
 - **Scope enforcement** -- only scans the target host, never leaves scope
-- **3 output formats** -- coloured console, JSON, interactive HTML
+- **4 output formats** -- coloured console, JSON, interactive HTML, SARIF (CI/CD)
 - **Parallel execution** -- ThreadPoolExecutor with 4 workers for check modules
 - **Proxy support** -- route traffic through Burp Suite, ZAP, or any HTTP proxy
 - **Exit codes** -- returns `1` if CRITICAL or HIGH findings, `0` otherwise (CI/CD friendly)
@@ -367,7 +367,7 @@ python dast_scanner.py https://example.com/api/endpoint --no-crawl
 ### CLI Reference
 
 ```
-usage: dast_scanner.py [-h] [--json FILE] [--html FILE]
+usage: dast_scanner.py [-h] [--json FILE] [--html FILE] [--sarif FILE]
                        [--severity {CRITICAL,HIGH,MEDIUM,LOW,INFO}]
                        [-v] [--version]
                        [--crawl-depth N] [--max-pages N]
@@ -386,6 +386,7 @@ options:
   -h, --help            Show help message and exit
   --json FILE           Save JSON report to FILE
   --html FILE           Save HTML report to FILE
+  --sarif FILE          Save SARIF report to FILE (GitHub/GitLab CI integration)
   --severity SEV        Minimum severity (CRITICAL, HIGH, MEDIUM, LOW, INFO)
   -v, --verbose         Verbose output
   --version             Show scanner version
@@ -486,7 +487,7 @@ jobs:
           python app.py &
           sleep 5
       - name: Run DAST Scanner
-        run: python dast_scanner.py http://localhost:8080 --severity HIGH --json report.json --html report.html
+        run: python dast_scanner.py http://localhost:8080 --severity HIGH --json report.json --html report.html --sarif report.sarif
       - name: Upload Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -507,7 +508,7 @@ dast-scan:
     - pip install requests
     - python app.py &
     - sleep 5
-    - python dast_scanner.py http://localhost:8080 --severity HIGH --json report.json --html report.html
+    - python dast_scanner.py http://localhost:8080 --severity HIGH --json report.json --html report.html --sarif report.sarif
   artifacts:
     paths: [report.json, report.html]
     when: always
