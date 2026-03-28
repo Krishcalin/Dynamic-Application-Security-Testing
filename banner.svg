@@ -30,21 +30,15 @@
 
   <!-- Radar/scan icon -->
   <g transform="translate(100, 150)">
-    <!-- Outer circle -->
     <circle cx="0" cy="0" r="65" fill="none" stroke="url(#iconGrad)" stroke-width="3" opacity="0.4"/>
-    <!-- Middle circle -->
     <circle cx="0" cy="0" r="45" fill="none" stroke="url(#iconGrad)" stroke-width="2.5" opacity="0.6"/>
-    <!-- Inner circle -->
     <circle cx="0" cy="0" r="25" fill="none" stroke="url(#iconGrad)" stroke-width="2" opacity="0.8"/>
-    <!-- Center dot -->
     <circle cx="0" cy="0" r="5" fill="#fbbf24"/>
-    <!-- Sweep line -->
     <line x1="0" y1="0" x2="55" y2="-35" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
-    <!-- Detection dots -->
     <circle cx="30" cy="-20" r="4" fill="#ef4444" opacity="0.9"/>
     <circle cx="-15" cy="35" r="3.5" fill="#f97316" opacity="0.8"/>
     <circle cx="45" cy="15" r="3" fill="#eab308" opacity="0.7"/>
-    <!-- Crosshair -->
+    <circle cx="-40" cy="-25" r="3" fill="#ef4444" opacity="0.6"/>
     <line x1="-70" y1="0" x2="-55" y2="0" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
     <line x1="55" y1="0" x2="70" y2="0" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
     <line x1="0" y1="-70" x2="0" y2="-55" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
@@ -52,47 +46,113 @@
   </g>
 
   <!-- Title text -->
-  <text x="220" y="120" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="48" font-weight="700" fill="#ffffff" letter-spacing="-1">
+  <text x="220" y="110" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="48" font-weight="700" fill="#ffffff" letter-spacing="-1">
     DAST Scanner
   </text>
 
   <!-- Subtitle -->
-  <text x="220" y="165" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="20" fill="#fed7aa" letter-spacing="0.5">
+  <text x="220" y="150" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="20" fill="#fed7aa" letter-spacing="0.5">
     Dynamic Application Security Testing
   </text>
 
   <!-- Description -->
-  <text x="220" y="205" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" fill="#fde68a" opacity="0.85">
-    Active web security scanner | OWASP Top 10 | 58 checks | Crawl + Inject + Report
+  <text x="220" y="185" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13.5" fill="#fde68a" opacity="0.85">
+    Active web security scanner | OWASP Top 10 | 109 checks | 22 modules | Crawl + Inject + Report
   </text>
 
-  <!-- Tags -->
-  <g transform="translate(220, 230)">
-    <rect x="0" y="0" width="68" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
-    <text x="34" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">Python</text>
+  <!-- Tags row 1 -->
+  <g transform="translate(220, 204)">
+    <rect x="0" y="0" width="68" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="34" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">Python</text>
 
-    <rect x="78" y="0" width="88" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
-    <text x="122" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">OWASP Top 10</text>
+    <rect x="76" y="0" width="88" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="120" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">OWASP Top 10</text>
 
-    <rect x="176" y="0" width="64" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
-    <text x="208" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">SQLi</text>
+    <rect x="172" y="0" width="50" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="197" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">SQLi</text>
 
-    <rect x="250" y="0" width="54" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
-    <text x="277" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">XSS</text>
+    <rect x="230" y="0" width="46" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="253" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">XSS</text>
 
-    <rect x="314" y="0" width="62" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
-    <text x="345" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">SSRF</text>
+    <rect x="284" y="0" width="52" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="310" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">SSRF</text>
 
-    <rect x="386" y="0" width="54" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
-    <text x="413" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">JWT</text>
+    <rect x="344" y="0" width="46" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="367" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">JWT</text>
 
-    <rect x="450" y="0" width="54" height="24" rx="4" fill="#ffffff" opacity="0.15"/>
-    <text x="477" y="16" font-family="monospace" font-size="11" fill="#fef3c7" text-anchor="middle">XXE</text>
+    <rect x="398" y="0" width="62" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="429" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">OAuth</text>
+
+    <rect x="468" y="0" width="52" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="494" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">CVEs</text>
+
+    <rect x="528" y="0" width="64" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="560" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">SSL/TLS</text>
+  </g>
+
+  <!-- Tags row 2 -->
+  <g transform="translate(220, 234)">
+    <rect x="0" y="0" width="80" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="40" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">Smuggling</text>
+
+    <rect x="88" y="0" width="82" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="129" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">WebSocket</text>
+
+    <rect x="178" y="0" width="72" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="214" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">Deseiral</text>
+
+    <rect x="258" y="0" width="62" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="289" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">Upload</text>
+
+    <rect x="328" y="0" width="48" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="352" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">CMS</text>
+
+    <rect x="384" y="0" width="56" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="412" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">SARIF</text>
+
+    <rect x="448" y="0" width="56" height="22" rx="4" fill="#ffffff" opacity="0.15"/>
+    <text x="476" y="15" font-family="monospace" font-size="10.5" fill="#fef3c7" text-anchor="middle">CI/CD</text>
+  </g>
+
+  <!-- Right panel: stats -->
+  <g transform="translate(830, 60)">
+    <!-- Rules card -->
+    <rect x="0" y="0" width="100" height="64" rx="10" fill="#ffffff" opacity="0.12"/>
+    <text x="50" y="30" font-family="'Segoe UI',sans-serif" font-size="24" font-weight="800" fill="#fff" text-anchor="middle">109</text>
+    <text x="50" y="50" font-family="'Segoe UI',sans-serif" font-size="9" fill="#fde68a" text-anchor="middle" letter-spacing="1">RULES</text>
+
+    <!-- Modules card -->
+    <rect x="110" y="0" width="100" height="64" rx="10" fill="#ffffff" opacity="0.12"/>
+    <text x="160" y="30" font-family="'Segoe UI',sans-serif" font-size="24" font-weight="800" fill="#fff" text-anchor="middle">22</text>
+    <text x="160" y="50" font-family="'Segoe UI',sans-serif" font-size="9" fill="#fde68a" text-anchor="middle" letter-spacing="1">MODULES</text>
+
+    <!-- CVEs card -->
+    <rect x="220" y="0" width="100" height="64" rx="10" fill="#ffffff" opacity="0.12"/>
+    <text x="270" y="30" font-family="'Segoe UI',sans-serif" font-size="24" font-weight="800" fill="#fff" text-anchor="middle">10</text>
+    <text x="270" y="50" font-family="'Segoe UI',sans-serif" font-size="9" fill="#fde68a" text-anchor="middle" letter-spacing="1">CVE CHECKS</text>
+  </g>
+
+  <!-- Right panel: output formats bar -->
+  <g transform="translate(830, 140)">
+    <rect x="0" y="0" width="320" height="36" rx="8" fill="#ffffff" opacity="0.08"/>
+    <text x="12" y="14" font-family="'Segoe UI',sans-serif" font-size="8" fill="#fde68a" letter-spacing="1.5" opacity="0.7">OUTPUT FORMATS</text>
+    <text x="12" y="28" font-family="monospace" font-size="10.5" fill="#fef3c7">
+      Console  JSON  HTML  SARIF
+    </text>
+  </g>
+
+  <!-- Right panel: capabilities bar -->
+  <g transform="translate(830, 190)">
+    <rect x="0" y="0" width="320" height="36" rx="8" fill="#ffffff" opacity="0.08"/>
+    <text x="12" y="14" font-family="'Segoe UI',sans-serif" font-size="8" fill="#fde68a" letter-spacing="1.5" opacity="0.7">CAPABILITIES</text>
+    <text x="12" y="28" font-family="monospace" font-size="10.5" fill="#fef3c7">
+      BFS Crawl  5 Auth Modes  WAF Detect
+    </text>
   </g>
 
   <!-- Version badge -->
-  <g transform="translate(1070, 30)">
-    <rect x="0" y="0" width="90" height="28" rx="14" fill="#ffffff" opacity="0.2"/>
-    <text x="45" y="19" font-family="monospace" font-size="13" fill="#fff" text-anchor="middle" font-weight="600">v1.0.0</text>
+  <g transform="translate(1060, 245)">
+    <rect x="0" y="0" width="90" height="26" rx="13" fill="#ffffff" opacity="0.2"/>
+    <text x="45" y="18" font-family="monospace" font-size="13" fill="#fff" text-anchor="middle" font-weight="600">v1.3.0</text>
   </g>
 </svg>
