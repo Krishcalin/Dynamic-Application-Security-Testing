@@ -22,7 +22,8 @@ Dynamic-Application-Security-Testing/
 
 ## Architecture
 
-- **File**: `dast_scanner.py` (~2,200 lines)
+- **File**: `dast_scanner.py` (~2,800 lines)
+- **Version**: 1.1.0
 - **Dependency**: `requests` (only external dependency)
 - **Python**: 3.10+
 
@@ -38,7 +39,7 @@ Dynamic-Application-Security-Testing/
 | `AuthManager` | 5 auth modes: none, bearer, cookie, basic, form |
 | `DASTScanner` | Orchestrator: crawl → WAF detect → parallel checks → report |
 
-### Check Functions (11 modules, 58 rules)
+### Check Functions (17 modules, 79 rules)
 
 | Module | Rule IDs | Count | OWASP Category |
 |--------|----------|-------|----------------|
@@ -53,6 +54,12 @@ Dynamic-Application-Security-Testing/
 | `check_xxe` | DAST-XXE-001 to 002 | 2 | A05:2021 Security Misconfiguration |
 | `check_api_security` | DAST-API-001 to 004 | 4 | A05:2021 / A04:2021 |
 | `check_jwt` | DAST-JWT-001 to 003 | 3 | A02:2021 Cryptographic Failures |
+| `check_deserialization` | DAST-DES-001 to 004 | 4 | A08:2021 Software Integrity |
+| `check_file_upload` | DAST-UPLOAD-001 to 004 | 4 | A04:2021 Insecure Design |
+| `check_request_smuggling` | DAST-SMUG-001 to 003 | 3 | A05:2021 Security Misconfiguration |
+| `check_websocket` | DAST-WS-001 to 003 | 3 | A07:2021 Auth Failures |
+| `check_oauth` | DAST-OAUTH-001 to 004 | 4 | A07:2021 Auth Failures |
+| `check_cache_poisoning` | DAST-CACHE-001 to 003 | 3 | A05:2021 Security Misconfiguration |
 
 ### Rule ID Format
 

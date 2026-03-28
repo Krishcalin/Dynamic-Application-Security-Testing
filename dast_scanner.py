@@ -33,7 +33,7 @@ from urllib.parse import (
     parse_qs, quote, urlencode, urljoin, urlparse, urlunparse,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # ── Graceful dependency check ────────────────────────────────────────────────
 try:
@@ -48,7 +48,7 @@ except ImportError:
 #  CONSTANTS
 # ════════════════════════════════════════════════════════════════════════════════
 
-USER_AGENT = "DAST-Scanner/1.0.0"
+USER_AGENT = "DAST-Scanner/1.1.0"
 CANARY = "SKYHIGH"  # Non-executable marker for reflection detection
 MAX_BODY_SNIPPET = 2000
 DEFAULT_TIMEOUT = 15
@@ -1791,6 +1791,611 @@ def check_jwt(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Fi
         break  # Analyse first JWT only
 
 # ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: INSECURE DESERIALIZATION  (DAST-DES-001 .. 004)
+# ════════════════════════════════════════════════════════════════════════════════
+
+JAVA_DESER_PATTERNS = [
+    r"java\.io\.ObjectInputStream",
+    r"ClassNotFoundException",
+    r"InvalidClassException",
+    r"java\.lang\.ClassCastException.*readObject",
+    r"org\.apache\.commons\.collections",
+    r"java\.io\.StreamCorruptedException",
+]
+
+PHP_DESER_PATTERNS = [
+    r"unserialize\(\)",
+    r"__wakeup\(\)",
+    r"PHP (Fatal|Warning).*unserialize",
+    r"allowed_classes",
+]
+
+PYTHON_PICKLE_PATTERNS = [
+    r"_pickle\.UnpicklingError",
+    r"pickle\.loads",
+    r"Unpickling.*not.*allowed",
+    r"ModuleNotFoundError.*pickle",
+]
+
+
+def check_deserialization(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect insecure deserialization vulnerabilities."""
+
+    # ─�� DAST-DES-001: Java deserialization ──
+    java_payload = "rO0ABXNyABFqYXZhLmxhbmcuQm9vbGVhbtAX9snNVYRCAgABWgAFdmFsdWV4cAE="  # serialized Boolean
+    for url in list(sitemap.urls)[:15]:
+        for header_name in ("X-Data", "Cookie", "Content-Type"):
+            resp = client.post(url, data=base64.b64decode(java_payload),
+                               headers={"Content-Type": "application/x-java-serialized-object"})
+            if resp is None:
+                continue
+            body = resp.text[:MAX_BODY_SNIPPET]
+            for pat in JAVA_DESER_PATTERNS:
+                m = re.search(pat, body, re.I)
+                if m:
+                    yield Finding(
+                        rule_id="DAST-DES-001", name="Java Deserialization",
+                        category="Deserialization", severity="CRITICAL",
+                        url=url, method="POST", parameter="body",
+                        payload="Java serialized object (rO0AB...)",
+                        evidence=m.group()[:200],
+                        description="Application processes Java serialized objects, enabling remote code execution.",
+                        recommendation="Avoid Java native deserialization. Use JSON/XML instead. Implement ObjectInputFilter.",
+                        cwe="CWE-502", owasp="A08:2021 Software and Data Integrity Failures",
+                    )
+                    break
+
+    # ── DAST-DES-002: .NET ViewState insecure ──
+    for form in sitemap.forms:
+        viewstate_field = None
+        has_generator = False
+        for fld in form.fields:
+            name = fld.get("name", "")
+            if name == "__VIEWSTATE":
+                viewstate_field = fld
+            if name == "__VIEWSTATEGENERATOR":
+                has_generator = True
+        if viewstate_field and not has_generator:
+            yield Finding(
+                rule_id="DAST-DES-002", name=".NET ViewState MAC Not Validated",
+                category="Deserialization", severity="HIGH",
+                url=form.source_url, method=form.method, parameter="__VIEWSTATE",
+                payload="N/A", evidence="__VIEWSTATE present without __VIEWSTATEGENERATOR",
+                description="ViewState MAC validation may be disabled, allowing deserialization attacks.",
+                recommendation="Enable ViewState MAC validation: EnableViewStateMac=\"true\" in web.config.",
+                cwe="CWE-502", owasp="A08:2021 Software and Data Integrity Failures",
+            )
+
+    # ── DAST-DES-003: PHP object injection ──
+    php_payloads = ['O:8:"stdClass":0:{}', 'a:1:{s:4:"test";s:4:"test";}']
+    for url in _urls_with_params(sitemap):
+        for param, _ in _get_params(url):
+            for payload in php_payloads:
+                test_url = _inject_param(url, param, payload)
+                resp = client.get(test_url)
+                if resp is None:
+                    continue
+                body = resp.text[:MAX_BODY_SNIPPET]
+                for pat in PHP_DESER_PATTERNS:
+                    if re.search(pat, body, re.I):
+                        yield Finding(
+                            rule_id="DAST-DES-003", name="PHP Object Injection",
+                            category="Deserialization", severity="HIGH",
+                            url=test_url, method="GET", parameter=param,
+                            payload=payload,
+                            evidence=re.search(pat, body, re.I).group()[:200],
+                            description=f"PHP unserialize() processes user input in parameter '{param}'.",
+                            recommendation="Never pass user input to unserialize(). Use json_decode() instead.",
+                            cwe="CWE-502", owasp="A08:2021 Software and Data Integrity Failures",
+                        )
+                        break
+
+    # ── DAST-DES-004: Python pickle injection ──
+    pickle_b64 = "gASVEAAAAAAAAACMBHRlc3SUjAR0ZXN0lIaULg=="  # pickle.dumps("test")
+    for url in _urls_with_params(sitemap):
+        for param, _ in _get_params(url):
+            test_url = _inject_param(url, param, pickle_b64)
+            resp = client.get(test_url)
+            if resp is None:
+                continue
+            body = resp.text[:MAX_BODY_SNIPPET]
+            for pat in PYTHON_PICKLE_PATTERNS:
+                if re.search(pat, body, re.I):
+                    yield Finding(
+                        rule_id="DAST-DES-004", name="Python Pickle Injection",
+                        category="Deserialization", severity="HIGH",
+                        url=test_url, method="GET", parameter=param,
+                        payload="Base64-encoded pickle object",
+                        evidence=re.search(pat, body, re.I).group()[:200],
+                        description=f"Python pickle.loads() processes user input in parameter '{param}'.",
+                        recommendation="Never unpickle untrusted data. Use JSON or MessagePack instead.",
+                        cwe="CWE-502", owasp="A08:2021 Software and Data Integrity Failures",
+                    )
+                    break
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: FILE UPLOAD  (DAST-UPLOAD-001 .. 004)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def check_file_upload(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect unrestricted file upload and extension bypass vulnerabilities."""
+
+    # Find forms with file inputs
+    upload_forms = []
+    for form in sitemap.forms:
+        has_file = any(f.get("type") == "file" for f in form.fields)
+        if has_file:
+            upload_forms.append(form)
+
+    if not upload_forms:
+        return
+
+    canary_content = f"<?php echo '{CANARY}'; ?>"
+    test_extensions = [
+        (".php", "application/x-php", "DAST-UPLOAD-001"),
+        (".jsp", "application/x-jsp", "DAST-UPLOAD-001"),
+        (".aspx", "application/x-aspx", "DAST-UPLOAD-001"),
+    ]
+    bypass_extensions = [
+        (".php.jpg", "image/jpeg", "DAST-UPLOAD-002"),
+        (".php%00.jpg", "image/jpeg", "DAST-UPLOAD-002"),
+        (".phtml", "text/html", "DAST-UPLOAD-002"),
+    ]
+
+    for form in upload_forms[:3]:
+        file_field = next((f for f in form.fields if f.get("type") == "file"), None)
+        if not file_field:
+            continue
+        fname = file_field.get("name", "file")
+        other_fields = {f.get("name", ""): f.get("value", "") for f in form.fields
+                        if f.get("name") and f.get("type") != "file"}
+
+        # ── DAST-UPLOAD-001: Unrestricted file upload ──
+        for ext, ctype, rule_id in test_extensions:
+            files = {fname: (f"test{ext}", canary_content, ctype)}
+            resp = client.post(form.action, files=files, data=other_fields)
+            if resp and resp.status_code in (200, 201, 302):
+                yield Finding(
+                    rule_id=rule_id, name=f"Unrestricted file upload ({ext})",
+                    category="File Upload", severity="CRITICAL",
+                    url=form.action, method="POST", parameter=fname,
+                    payload=f"Uploaded test{ext} with PHP content",
+                    evidence=f"Server accepted {ext} file (HTTP {resp.status_code})",
+                    description=f"Application accepts {ext} file uploads which may enable remote code execution.",
+                    recommendation="Validate file extensions server-side using an allowlist. Store uploads outside webroot.",
+                    cwe="CWE-434", owasp="A04:2021 Insecure Design",
+                )
+                break  # One finding per form
+
+        # ── DAST-UPLOAD-002: Extension bypass ──
+        for ext, ctype, rule_id in bypass_extensions:
+            files = {fname: (f"test{ext}", canary_content, ctype)}
+            resp = client.post(form.action, files=files, data=other_fields)
+            if resp and resp.status_code in (200, 201, 302):
+                yield Finding(
+                    rule_id=rule_id, name=f"File upload extension bypass ({ext})",
+                    category="File Upload", severity="HIGH",
+                    url=form.action, method="POST", parameter=fname,
+                    payload=f"Uploaded test{ext} (double extension / null byte)",
+                    evidence=f"Server accepted {ext} file (HTTP {resp.status_code})",
+                    description=f"Application accepts {ext} bypass extension which may evade file type restrictions.",
+                    recommendation="Validate extensions after removing path components and null bytes. Use Content-Type validation.",
+                    cwe="CWE-434", owasp="A04:2021 Insecure Design",
+                )
+                break
+
+        # ── DAST-UPLOAD-003: Content-type mismatch ──
+        files = {fname: ("test.txt", canary_content, "image/jpeg")}
+        resp = client.post(form.action, files=files, data=other_fields)
+        if resp and resp.status_code in (200, 201, 302):
+            yield Finding(
+                rule_id="DAST-UPLOAD-003", name="File upload content-type mismatch accepted",
+                category="File Upload", severity="MEDIUM",
+                url=form.action, method="POST", parameter=fname,
+                payload="Uploaded .txt with Content-Type: image/jpeg",
+                evidence=f"Server accepted mismatched content-type (HTTP {resp.status_code})",
+                description="Application does not validate that file content matches the declared Content-Type.",
+                recommendation="Validate file content (magic bytes) in addition to Content-Type header.",
+                cwe="CWE-434", owasp="A04:2021 Insecure Design",
+            )
+
+        # ── DAST-UPLOAD-004: SVG XSS ──
+        svg_xss = f'<svg xmlns="http://www.w3.org/2000/svg"><script>{CANARY}</script></svg>'
+        files = {fname: ("test.svg", svg_xss, "image/svg+xml")}
+        resp = client.post(form.action, files=files, data=other_fields)
+        if resp and resp.status_code in (200, 201, 302):
+            yield Finding(
+                rule_id="DAST-UPLOAD-004", name="SVG upload XSS",
+                category="File Upload", severity="MEDIUM",
+                url=form.action, method="POST", parameter=fname,
+                payload="SVG file with embedded <script> tag",
+                evidence=f"Server accepted SVG with script content (HTTP {resp.status_code})",
+                description="Application accepts SVG files which can contain JavaScript for XSS attacks.",
+                recommendation="Sanitize SVG uploads or serve them with Content-Disposition: attachment.",
+                cwe="CWE-434", owasp="A03:2021 Injection",
+            )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: HTTP REQUEST SMUGGLING  (DAST-SMUG-001 .. 003)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def check_request_smuggling(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect HTTP request smuggling vulnerabilities."""
+
+    # Baseline: normal request to target
+    baseline = client.get(target)
+    if baseline is None:
+        return
+    baseline_status = baseline.status_code
+    baseline_len = len(baseline.content)
+
+    # ── DAST-SMUG-001: CL.TE smuggling probe ──
+    try:
+        smuggle_body = "0\r\n\r\nGET /dast-smuggle-clte HTTP/1.1\r\nHost: " + urlparse(target).hostname + "\r\n\r\n"
+        resp = client.post(target,
+                           data=smuggle_body,
+                           headers={
+                               "Content-Length": str(len(smuggle_body)),
+                               "Transfer-Encoding": "chunked",
+                           })
+        if resp and resp.status_code != baseline_status:
+            yield Finding(
+                rule_id="DAST-SMUG-001", name="HTTP Request Smuggling (CL.TE)",
+                category="Request Smuggling", severity="HIGH",
+                url=target, method="POST", parameter="Transfer-Encoding + Content-Length",
+                payload="Conflicting CL and TE headers",
+                evidence=f"Baseline status {baseline_status}, smuggle response {resp.status_code}",
+                description="Server processes Transfer-Encoding and Content-Length differently, enabling request smuggling.",
+                recommendation="Configure reverse proxy/load balancer to normalize Transfer-Encoding handling.",
+                cwe="CWE-444", owasp="A05:2021 Security Misconfiguration",
+            )
+    except Exception:
+        pass
+
+    # ── DAST-SMUG-002: TE.CL smuggling probe ──
+    try:
+        smuggle_body = "5\r\nGPOST\r\n0\r\n\r\n"
+        resp = client.post(target,
+                           data=smuggle_body,
+                           headers={
+                               "Content-Length": "4",
+                               "Transfer-Encoding": "chunked",
+                           })
+        if resp and resp.status_code != baseline_status:
+            yield Finding(
+                rule_id="DAST-SMUG-002", name="HTTP Request Smuggling (TE.CL)",
+                category="Request Smuggling", severity="HIGH",
+                url=target, method="POST", parameter="Content-Length + Transfer-Encoding",
+                payload="Chunked body with short Content-Length",
+                evidence=f"Baseline status {baseline_status}, smuggle response {resp.status_code}",
+                description="Server prioritizes Content-Length over Transfer-Encoding, enabling request smuggling.",
+                recommendation="Reject requests with both Content-Length and Transfer-Encoding headers.",
+                cwe="CWE-444", owasp="A05:2021 Security Misconfiguration",
+            )
+    except Exception:
+        pass
+
+    # ── DAST-SMUG-003: TE.TE obfuscation ──
+    obfuscated_te = [
+        "Transfer-Encoding: xchunked",
+        "Transfer-Encoding : chunked",
+        "Transfer-Encoding: chunked\r\nTransfer-encoding: x",
+    ]
+    for te_header in obfuscated_te:
+        try:
+            parts = te_header.split(": ", 1)
+            resp = client.post(target,
+                               data="0\r\n\r\n",
+                               headers={parts[0].strip(): parts[1].strip() if len(parts) > 1 else "chunked"})
+            if resp and resp.status_code != baseline_status:
+                yield Finding(
+                    rule_id="DAST-SMUG-003", name="HTTP TE Header Obfuscation Accepted",
+                    category="Request Smuggling", severity="MEDIUM",
+                    url=target, method="POST", parameter="Transfer-Encoding",
+                    payload=te_header,
+                    evidence=f"Server processed obfuscated TE header (status {resp.status_code})",
+                    description="Server accepts obfuscated Transfer-Encoding headers which can enable smuggling.",
+                    recommendation="Strictly validate Transfer-Encoding header format. Reject malformed TE headers.",
+                    cwe="CWE-444", owasp="A05:2021 Security Misconfiguration",
+                )
+                break
+        except Exception:
+            pass
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: WEBSOCKET SECURITY  (DAST-WS-001 .. 003)
+# ════════════════════════════════════════════════════════════════════════════════
+
+WS_UPGRADE_HEADERS = {
+    "Connection": "Upgrade",
+    "Upgrade": "websocket",
+    "Sec-WebSocket-Version": "13",
+    "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+}
+
+WS_PATHS = ["/ws", "/websocket", "/socket.io/", "/graphql-ws",
+            "/ws/", "/chat", "/live", "/stream", "/realtime"]
+
+
+def check_websocket(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect WebSocket security issues."""
+
+    parsed = urlparse(target)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    discovered_ws: list[str] = []
+
+    # ── DAST-WS-001: WebSocket endpoint discovery ──
+    for path in WS_PATHS:
+        ws_url = urljoin(base, path)
+        try:
+            resp = client.get(ws_url, headers=WS_UPGRADE_HEADERS)
+            if resp is None:
+                continue
+            upgrade_hdr = resp.headers.get("Upgrade", "").lower()
+            if resp.status_code == 101 or upgrade_hdr == "websocket":
+                discovered_ws.append(ws_url)
+                yield Finding(
+                    rule_id="DAST-WS-001", name=f"WebSocket endpoint discovered ({path})",
+                    category="WebSocket", severity="INFO",
+                    url=ws_url, method="GET", parameter="Upgrade",
+                    payload="Connection: Upgrade, Upgrade: websocket",
+                    evidence=f"HTTP {resp.status_code}, Upgrade: {upgrade_hdr}",
+                    description=f"WebSocket endpoint found at {path}. Review for authentication and input validation.",
+                    recommendation="Ensure WebSocket endpoints require authentication and validate all messages.",
+                    cwe="CWE-1385", owasp="A07:2021 Identification and Authentication Failures",
+                )
+        except Exception:
+            pass
+
+    # Also check if any crawled URLs hint at WebSocket
+    for url in sitemap.urls:
+        if any(ws_path in url for ws_path in ("/socket.io", "/ws/", "websocket")):
+            if url not in discovered_ws:
+                discovered_ws.append(url)
+
+    # ── DAST-WS-002: Missing origin validation ──
+    for ws_url in discovered_ws[:3]:
+        try:
+            evil_headers = dict(WS_UPGRADE_HEADERS)
+            evil_headers["Origin"] = "https://evil.example.com"
+            resp = client.get(ws_url, headers=evil_headers)
+            if resp and (resp.status_code == 101 or
+                         resp.headers.get("Upgrade", "").lower() == "websocket"):
+                yield Finding(
+                    rule_id="DAST-WS-002", name="WebSocket missing origin validation",
+                    category="WebSocket", severity="HIGH",
+                    url=ws_url, method="GET", parameter="Origin",
+                    payload="Origin: https://evil.example.com",
+                    evidence=f"WebSocket upgrade accepted from evil origin (HTTP {resp.status_code})",
+                    description="WebSocket endpoint accepts connections from any origin, enabling cross-site WebSocket hijacking.",
+                    recommendation="Validate the Origin header against an allowlist before accepting WebSocket connections.",
+                    cwe="CWE-346", owasp="A07:2021 Identification and Authentication Failures",
+                )
+        except Exception:
+            pass
+
+    # ── DAST-WS-003: WebSocket over unencrypted HTTP ──
+    if parsed.scheme == "http":
+        for ws_url in discovered_ws:
+            yield Finding(
+                rule_id="DAST-WS-003", name="WebSocket over unencrypted HTTP",
+                category="WebSocket", severity="MEDIUM",
+                url=ws_url, method="GET", parameter="scheme",
+                payload="ws:// instead of wss://",
+                evidence=f"WebSocket endpoint on HTTP (not HTTPS): {ws_url}",
+                description="WebSocket connection uses unencrypted ws:// protocol instead of wss://.",
+                recommendation="Use wss:// (WebSocket Secure) for all WebSocket connections.",
+                cwe="CWE-319", owasp="A02:2021 Cryptographic Failures",
+            )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: OAUTH SECURITY  (DAST-OAUTH-001 .. 004)
+# ════════════════════════════════════════════════════════════════════════════════
+
+OAUTH_PATHS = ["/authorize", "/oauth/authorize", "/oauth2/authorize",
+               "/login/oauth", "/auth/realms/", "/.well-known/openid-configuration",
+               "/connect/authorize", "/oauth/token", "/oauth2/token"]
+
+
+def check_oauth(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect OAuth/OIDC security misconfigurations."""
+
+    parsed = urlparse(target)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    oauth_urls: list[str] = []
+
+    # Discover OAuth endpoints
+    for path in OAUTH_PATHS:
+        url = urljoin(base, path)
+        resp = client.get(url, allow_redirects=False)
+        if resp and resp.status_code in (200, 302, 303, 307, 400, 401):
+            oauth_urls.append(url)
+
+    # Also check crawled URLs for OAuth patterns
+    for url in sitemap.urls:
+        if any(p in url.lower() for p in ("oauth", "authorize", "openid", "/auth/")):
+            if url not in oauth_urls:
+                oauth_urls.append(url)
+
+    if not oauth_urls:
+        return
+
+    # ── DAST-OAUTH-001: Open redirect in OAuth redirect_uri ──
+    for url in oauth_urls[:5]:
+        if "authorize" in url.lower():
+            test_url = url + ("&" if "?" in url else "?") + "redirect_uri=https://evil.example.com/callback"
+            resp = client.get(test_url, allow_redirects=False)
+            if resp and resp.status_code in (301, 302, 303, 307, 308):
+                location = resp.headers.get("Location", "")
+                if "evil.example.com" in location:
+                    yield Finding(
+                        rule_id="DAST-OAUTH-001", name="Open redirect in OAuth redirect_uri",
+                        category="OAuth", severity="HIGH",
+                        url=test_url, method="GET", parameter="redirect_uri",
+                        payload="redirect_uri=https://evil.example.com/callback",
+                        evidence=f"Redirected to: {location[:200]}",
+                        description="OAuth authorization endpoint accepts arbitrary redirect_uri, enabling token theft.",
+                        recommendation="Validate redirect_uri against a strict allowlist of registered callback URLs.",
+                        cwe="CWE-601", owasp="A07:2021 Identification and Authentication Failures",
+                    )
+
+    # ── DAST-OAUTH-002: Token in URL query string ──
+    for url in oauth_urls[:5]:
+        resp = client.get(url, allow_redirects=False)
+        if resp and resp.status_code in (301, 302, 303, 307):
+            location = resp.headers.get("Location", "")
+            if re.search(r"[?&](access_token|code)=", location):
+                yield Finding(
+                    rule_id="DAST-OAUTH-002", name="OAuth token/code in URL query string",
+                    category="OAuth", severity="MEDIUM",
+                    url=url, method="GET", parameter="redirect",
+                    payload="N/A",
+                    evidence=f"Token/code in redirect URL: {location[:200]}",
+                    description="OAuth tokens or authorization codes are transmitted in URL query strings, risking leakage via Referer headers and server logs.",
+                    recommendation="Use fragment-based responses (implicit flow) or POST-based code exchange.",
+                    cwe="CWE-598", owasp="A07:2021 Identification and Authentication Failures",
+                )
+
+    # ── DAST-OAUTH-003: Missing state parameter ──
+    for url in oauth_urls[:5]:
+        if "authorize" not in url.lower():
+            continue
+        resp = client.get(url, allow_redirects=False)
+        if resp:
+            # Check if state parameter is absent in the request/redirect
+            qs = urlparse(url).query + urlparse(resp.headers.get("Location", "")).query
+            if "state=" not in qs.lower():
+                yield Finding(
+                    rule_id="DAST-OAUTH-003", name="OAuth missing state parameter",
+                    category="OAuth", severity="MEDIUM",
+                    url=url, method="GET", parameter="state",
+                    payload="N/A", evidence="No 'state' parameter found in OAuth authorize flow",
+                    description="OAuth authorization flow lacks CSRF protection via the 'state' parameter.",
+                    recommendation="Include a cryptographically random 'state' parameter in all OAuth requests.",
+                    cwe="CWE-352", owasp="A07:2021 Identification and Authentication Failures",
+                )
+                break
+
+    # ── DAST-OAUTH-004: PKCE not enforced ──
+    for url in oauth_urls[:5]:
+        if "token" not in url.lower():
+            continue
+        resp = client.post(url, data={
+            "grant_type": "authorization_code",
+            "code": "test_code",
+            "redirect_uri": target,
+        })
+        if resp and resp.status_code != 400:
+            body = resp.text.lower()
+            if "code_verifier" not in body and "invalid" not in body:
+                yield Finding(
+                    rule_id="DAST-OAUTH-004", name="OAuth PKCE not enforced",
+                    category="OAuth", severity="LOW",
+                    url=url, method="POST", parameter="code_verifier",
+                    payload="Token request without code_verifier",
+                    evidence=f"Token endpoint did not require PKCE (HTTP {resp.status_code})",
+                    description="OAuth token endpoint accepts authorization code exchange without PKCE (code_verifier).",
+                    recommendation="Enforce PKCE (RFC 7636) for all OAuth clients, especially public clients.",
+                    cwe="CWE-287", owasp="A07:2021 Identification and Authentication Failures",
+                )
+                break
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  CHECK: WEB CACHE POISONING  (DAST-CACHE-001 .. 003)
+# ════════════════════════════════════════════════════════════════════════════════
+
+UNKEYED_HEADERS = [
+    ("X-Forwarded-Host", "evil.dast-cache-test.example.com"),
+    ("X-Forwarded-Scheme", "nothttps"),
+    ("X-Original-URL", "/dast-cache-test"),
+    ("X-Rewrite-URL", "/dast-cache-test"),
+]
+
+
+def check_cache_poisoning(client: HTTPClient, sitemap: SiteMap, target: str) -> Generator[Finding, None, None]:
+    """Detect web cache poisoning and deception vulnerabilities."""
+
+    # ── DAST-CACHE-001: Unkeyed header injection ──
+    for hdr_name, hdr_value in UNKEYED_HEADERS:
+        resp = client.get(target, headers={hdr_name: hdr_value})
+        if resp is None:
+            continue
+        body = resp.text[:MAX_BODY_SNIPPET]
+        if hdr_value in body:
+            yield Finding(
+                rule_id="DAST-CACHE-001", name=f"Unkeyed header reflected ({hdr_name})",
+                category="Cache Poisoning", severity="HIGH",
+                url=target, method="GET", parameter=hdr_name,
+                payload=f"{hdr_name}: {hdr_value}",
+                evidence=f"Header value '{hdr_value}' reflected in response body",
+                description=f"The {hdr_name} header is reflected in the response but may not be included in the cache key, enabling cache poisoning.",
+                recommendation=f"Include {hdr_name} in the cache key or strip it at the CDN/proxy. Use Vary header.",
+                cwe="CWE-525", owasp="A05:2021 Security Misconfiguration",
+            )
+
+    # ── DAST-CACHE-002: Web cache deception ──
+    for url in list(sitemap.urls)[:10]:
+        if "?" in url:
+            continue  # Skip URLs with query params
+        deception_url = url.rstrip("/") + "/nonexistent.css"
+        resp = client.get(deception_url)
+        if resp is None:
+            continue
+        cache_control = resp.headers.get("Cache-Control", "").lower()
+        content_type = resp.headers.get("Content-Type", "").lower()
+        # If we get HTML content with a cacheable CSS extension
+        if ("text/html" in content_type and resp.status_code == 200
+                and ("public" in cache_control or "max-age" in cache_control)
+                and "no-store" not in cache_control and "private" not in cache_control):
+            yield Finding(
+                rule_id="DAST-CACHE-002", name="Web cache deception",
+                category="Cache Poisoning", severity="HIGH",
+                url=deception_url, method="GET", parameter="path",
+                payload=f"Appended /nonexistent.css to {url}",
+                evidence=f"HTML served at .css path with Cache-Control: {cache_control[:100]}",
+                description="Application serves dynamic HTML content at static-looking URLs that may be cached by CDN/proxy.",
+                recommendation="Set Cache-Control: no-store on dynamic pages. Configure CDN to respect Content-Type.",
+                cwe="CWE-524", owasp="A05:2021 Security Misconfiguration",
+            )
+            break  # One finding is enough
+
+    # ── DAST-CACHE-003: Cache key normalization ──
+    for url in list(sitemap.urls)[:5]:
+        if "?" in url:
+            continue
+        parsed = urlparse(url)
+        normal_path = parsed.path
+        doubled_path = normal_path.rstrip("/") + "//"
+        doubled_url = urlunparse(parsed._replace(path=doubled_path))
+
+        resp_normal = client.get(url)
+        resp_doubled = client.get(doubled_url)
+
+        if resp_normal and resp_doubled:
+            if (resp_normal.status_code == resp_doubled.status_code == 200
+                    and abs(len(resp_normal.content) - len(resp_doubled.content)) < 50):
+                # Same content at different paths = potential cache key confusion
+                cc = resp_doubled.headers.get("Cache-Control", "").lower()
+                if "public" in cc or "max-age" in cc:
+                    yield Finding(
+                        rule_id="DAST-CACHE-003", name="Cache key path normalization issue",
+                        category="Cache Poisoning", severity="MEDIUM",
+                        url=doubled_url, method="GET", parameter="path",
+                        payload=f"Path: {doubled_path}",
+                        evidence=f"Same content at {normal_path} and {doubled_path} with caching enabled",
+                        description="Server normalizes double-slash paths but cache may store them as different keys.",
+                        recommendation="Normalize paths at the cache/CDN level. Redirect non-canonical URLs.",
+                        cwe="CWE-525", owasp="A05:2021 Security Misconfiguration",
+                    )
+                    break
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 #  SCANNER ORCHESTRATOR
 # ════════════════════════════════════════════════════════════════════════════════
 
@@ -1806,6 +2411,12 @@ CHECK_MODULES = [
     ("XXE", check_xxe),
     ("API Security", check_api_security),
     ("JWT Security", check_jwt),
+    ("Deserialization", check_deserialization),
+    ("File Upload", check_file_upload),
+    ("Request Smuggling", check_request_smuggling),
+    ("WebSocket", check_websocket),
+    ("OAuth", check_oauth),
+    ("Cache Poisoning", check_cache_poisoning),
 ]
 
 

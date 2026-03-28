@@ -24,7 +24,7 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 
 ## Features
 
-- **58 security checks** across 11 categories mapped to OWASP Top 10 2021
+- **79 security checks** across 17 categories mapped to OWASP Top 10 2021
 - **BFS web crawler** with configurable depth, page limits, and scope enforcement
 - **5 authentication modes** -- none, bearer, cookie, basic, form-based login
 - **WAF detection** for 8 major WAF vendors
@@ -39,7 +39,7 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 
 ---
 
-## Security Checks (58 Rules)
+## Security Checks (79 Rules)
 
 ### Injection (7 Rules)
 
@@ -154,6 +154,57 @@ Static analysis finds code-level issues, but misses runtime vulnerabilities. Thi
 | DAST-JWT-002 | JWT signature not verified | CRITICAL |
 | DAST-JWT-003 | JWT signed with weak secret | CRITICAL |
 
+### Insecure Deserialization (4 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-DES-001 | Java deserialization (ObjectInputStream) | CRITICAL |
+| DAST-DES-002 | .NET ViewState MAC not validated | HIGH |
+| DAST-DES-003 | PHP object injection (unserialize) | HIGH |
+| DAST-DES-004 | Python pickle injection | HIGH |
+
+### File Upload (4 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-UPLOAD-001 | Unrestricted file upload (.php/.jsp/.aspx) | CRITICAL |
+| DAST-UPLOAD-002 | File upload extension bypass | HIGH |
+| DAST-UPLOAD-003 | Content-type mismatch accepted | MEDIUM |
+| DAST-UPLOAD-004 | SVG upload XSS | MEDIUM |
+
+### HTTP Request Smuggling (3 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-SMUG-001 | CL.TE request smuggling | HIGH |
+| DAST-SMUG-002 | TE.CL request smuggling | HIGH |
+| DAST-SMUG-003 | TE header obfuscation accepted | MEDIUM |
+
+### WebSocket Security (3 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-WS-001 | WebSocket endpoint discovered | INFO |
+| DAST-WS-002 | WebSocket missing origin validation | HIGH |
+| DAST-WS-003 | WebSocket over unencrypted HTTP | MEDIUM |
+
+### OAuth Security (4 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-OAUTH-001 | Open redirect in OAuth redirect_uri | HIGH |
+| DAST-OAUTH-002 | OAuth token/code in URL query string | MEDIUM |
+| DAST-OAUTH-003 | OAuth missing state parameter (CSRF) | MEDIUM |
+| DAST-OAUTH-004 | OAuth PKCE not enforced | LOW |
+
+### Web Cache Poisoning (3 Rules)
+
+| Rule ID | Name | Severity |
+|---------|------|----------|
+| DAST-CACHE-001 | Unkeyed header reflected (cache poisoning) | HIGH |
+| DAST-CACHE-002 | Web cache deception | HIGH |
+| DAST-CACHE-003 | Cache key path normalization issue | MEDIUM |
+
 ---
 
 ## OWASP Top 10 2021 Coverage
@@ -200,7 +251,7 @@ pip install requests
 
 ```bash
 python dast_scanner.py --version
-# Output: DAST Scanner v1.0.0
+# Output: DAST Scanner v1.1.0
 ```
 
 ---
