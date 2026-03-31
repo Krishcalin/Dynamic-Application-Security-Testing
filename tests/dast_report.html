@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DAST Scanner Report</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+.header{background:linear-gradient(135deg,#f97316,#dc2626,#991b1b);padding:2rem;text-align:center}
+.header h1{font-size:1.8rem;color:#fff}
+.header p{color:#fed7aa;margin-top:.3rem}
+.cards{display:flex;gap:1rem;padding:1.5rem;flex-wrap:wrap;justify-content:center}
+.card{background:#1e293b;border-radius:12px;padding:1.2rem;min-width:120px;text-align:center}
+.card .num{font-size:2rem;font-weight:700}
+.card .label{font-size:.85rem;color:#94a3b8}
+.critical .num{color:#dc2626} .high .num{color:#ea580c} .medium .num{color:#ca8a04} .low .num{color:#0891b2}
+.content{padding:1rem 1.5rem}
+table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:8px;overflow:hidden}
+th{background:#334155;padding:.75rem;text-align:left;font-size:.85rem;color:#94a3b8}
+td{padding:.75rem;border-bottom:1px solid #334155;font-size:.85rem;vertical-align:top}
+tr:hover{background:#334155}
+.sev{padding:2px 8px;border-radius:4px;color:#fff;font-size:.75rem;font-weight:600}
+a{color:#60a5fa} code{color:#fb923c;font-size:.8rem}
+.filters{padding:.5rem 1.5rem;display:flex;gap:.5rem;flex-wrap:wrap}
+.filters button{background:#334155;color:#e2e8f0;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:.8rem}
+.filters button:hover,.filters button.active{background:#f97316;color:#fff}
+</style></head><body>
+<div class="header">
+<h1>DAST Scanner &mdash; Security Report</h1>
+<p>Target: http://demo.example.com &nbsp;|&nbsp; Scanned: 2026-03-31 03:17:33 UTC &nbsp;|&nbsp; v1.3.0</p>
+</div>
+<div class="cards">
+<div class="card critical"><div class="num">4</div><div class="label">Critical</div></div>
+<div class="card high"><div class="num">10</div><div class="label">High</div></div>
+<div class="card medium"><div class="num">6</div><div class="label">Medium</div></div>
+<div class="card low"><div class="num">4</div><div class="label">Low</div></div>
+<div class="card"><div class="num">24</div><div class="label">Total</div></div>
+<div class="card"><div class="num">247</div><div class="label">Requests</div></div>
+</div>
+<div class="filters">
+<button class="active" onclick="filterSev('ALL')">All</button>
+<button onclick="filterSev('CRITICAL')">Critical</button>
+<button onclick="filterSev('HIGH')">High</button>
+<button onclick="filterSev('MEDIUM')">Medium</button>
+<button onclick="filterSev('LOW')">Low</button>
+</div>
+<div class="content">
+<table id="findings">
+<thead><tr><th>Severity</th><th>Rule</th><th>Category</th><th>URL</th><th>Payload</th><th>Evidence</th><th>CWE / OWASP</th><th>Recommendation</th></tr></thead>
+<tbody><tr>
+<td><span class="sev" style="background:#dc2626">CRITICAL</span></td>
+<td><strong>DAST-AC-002</strong><br>Directory Traversal in File Download</td>
+<td>Access Control</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/download?file=../../../etc/passwd" target="_blank">http://demo.example.com/download?file=../../../etc/passwd</a><br>
+<small>GET file</small></td>
+<td><code>../../../etc/passwd</code></td>
+<td>Response contains: root:x:0:0:root:/root:/bin/bash</td>
+<td>CWE-22<br><small>A01:2021 Broken Access Control</small></td>
+<td>Validate file paths against a whitelist. Use a chroot or restrict file access to a specific directory. Remove path traversal sequences.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#dc2626">CRITICAL</span></td>
+<td><strong>DAST-INJ-001</strong><br>SQL Injection in Login Form</td>
+<td>Injection</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/login" target="_blank">http://demo.example.com/login</a><br>
+<small>POST username</small></td>
+<td><code>' OR 1=1 --</code></td>
+<td>SQL error: You have an error in your SQL syntax near '' OR 1=1 --'</td>
+<td>CWE-89<br><small>A03:2021 Injection</small></td>
+<td>Use parameterized queries / prepared statements for all database operations. Never concatenate user input into SQL strings.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#dc2626">CRITICAL</span></td>
+<td><strong>DAST-INJ-003</strong><br>OS Command Injection in Ping Utility</td>
+<td>Injection</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/admin/ping" target="_blank">http://demo.example.com/admin/ping</a><br>
+<small>POST host</small></td>
+<td><code>127.0.0.1; cat /etc/passwd</code></td>
+<td>root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin</td>
+<td>CWE-78<br><small>A03:2021 Injection</small></td>
+<td>Use allow-listed input validation. Never pass user input to system shell commands. Use language-native libraries instead.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#dc2626">CRITICAL</span></td>
+<td><strong>DAST-JWT-001</strong><br>JWT Algorithm Confusion (none)</td>
+<td>JWT Security</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/protected" target="_blank">http://demo.example.com/api/protected</a><br>
+<small>GET Authorization</small></td>
+<td><code>eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwicm9sZSI6ImFkbWluIn0.</code></td>
+<td>HTTP 200 OK with admin data returned using alg:none JWT</td>
+<td>CWE-345<br><small>A02:2021 Cryptographic Failures</small></td>
+<td>Reject JWTs with alg=none. Enforce a specific algorithm (e.g., RS256). Validate the algorithm server-side.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-API-001</strong><br>API Endpoint Missing Authentication</td>
+<td>API Security</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/v2/admin/users" target="_blank">http://demo.example.com/api/v2/admin/users</a><br>
+<small>GET Authorization</small></td>
+<td><code>N/A (no token sent)</code></td>
+<td>HTTP 200 OK with user list returned without any authentication header</td>
+<td>CWE-306<br><small>A07:2021 Identification and Authentication Failures</small></td>
+<td>Enforce authentication on all API endpoints. Use OAuth 2.0 / API keys. Implement rate limiting.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-AC-001</strong><br>Insecure Direct Object Reference (IDOR)</td>
+<td>Access Control</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/users/1042/profile" target="_blank">http://demo.example.com/api/users/1042/profile</a><br>
+<small>GET user_id</small></td>
+<td><code>1042 (changed from 1001)</code></td>
+<td>HTTP 200 with different user's PII: {"name":"Jane Doe","email":"jane@corp.com"}</td>
+<td>CWE-639<br><small>A01:2021 Broken Access Control</small></td>
+<td>Implement server-side authorization checks for every resource access. Use indirect object references or UUIDs.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-AUTH-002</strong><br>Session Fixation Vulnerability</td>
+<td>Authentication & Session</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/login" target="_blank">http://demo.example.com/login</a><br>
+<small>POST SESSIONID</small></td>
+<td><code>N/A</code></td>
+<td>Session ID unchanged after login: SESSIONID=abc123 (pre-auth) -&gt; SESSIONID=abc123 (post-auth)</td>
+<td>CWE-384<br><small>A07:2021 Identification and Authentication Failures</small></td>
+<td>Regenerate the session ID after authentication. Invalidate old sessions on login.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-XSS-001</strong><br>Reflected XSS in Search Results</td>
+<td>Cross-Site Scripting</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/search?q=&lt;script&gt;alert(1)&lt;/script&gt;" target="_blank">http://demo.example.com/search?q=&lt;script&gt;alert(1)&lt;/script&gt;</a><br>
+<small>GET q</small></td>
+<td><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></td>
+<td>Response body contains unescaped: &lt;script&gt;alert(1)&lt;/script&gt;</td>
+<td>CWE-79<br><small>A03:2021 Injection</small></td>
+<td>HTML-encode all user-controlled output. Implement Content-Security-Policy headers. Use a templating engine with auto-escaping.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-XSS-002</strong><br>Stored XSS in Comment Field</td>
+<td>Cross-Site Scripting</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/blog/post/42/comments" target="_blank">http://demo.example.com/blog/post/42/comments</a><br>
+<small>POST comment_body</small></td>
+<td><code>&lt;img src=x onerror=alert(document.cookie)&gt;</code></td>
+<td>Stored payload rendered in GET /blog/post/42 response body</td>
+<td>CWE-79<br><small>A03:2021 Injection</small></td>
+<td>Sanitize HTML input using a whitelist-based library (e.g., DOMPurify). Encode output. Deploy CSP with nonce-based script sources.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-LFI-001</strong><br>Local File Inclusion via Template Parameter</td>
+<td>File Inclusion</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/page?template=../../../../etc/shadow" target="_blank">http://demo.example.com/page?template=../../../../etc/shadow</a><br>
+<small>GET template</small></td>
+<td><code>../../../../etc/shadow</code></td>
+<td>Response contains shadow file entries: root:$6$...:18000:0:99999:7:::</td>
+<td>CWE-98<br><small>A03:2021 Injection</small></td>
+<td>Never use user input to construct file paths. Use a whitelist of allowed templates. Disable remote file includes in PHP config.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-INJ-002</strong><br>Blind SQL Injection in Search</td>
+<td>Injection</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/search?q=test" target="_blank">http://demo.example.com/api/search?q=test</a><br>
+<small>GET q</small></td>
+<td><code>test' AND SLEEP(5)--</code></td>
+<td>Response time: 5.12s (baseline: 0.15s) -- time-based blind SQLi confirmed</td>
+<td>CWE-89<br><small>A03:2021 Injection</small></td>
+<td>Use parameterized queries. Implement input validation and WAF rules to block SQL meta-characters.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-JWT-002</strong><br>JWT Secret Brute-Forced (weak key)</td>
+<td>JWT Security</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/auth/token" target="_blank">http://demo.example.com/api/auth/token</a><br>
+<small>POST JWT signing key</small></td>
+<td><code>secret123</code></td>
+<td>JWT signature verified with dictionary key 'secret123' -- forged admin token accepted</td>
+<td>CWE-326<br><small>A02:2021 Cryptographic Failures</small></td>
+<td>Use strong randomly-generated secrets (256+ bits). Prefer asymmetric algorithms (RS256/ES256) for public APIs. Rotate keys periodically.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-SSRF-001</strong><br>SSRF via URL Parameter</td>
+<td>SSRF</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/fetch?url=http://169.254.169.254/latest/meta-data/" target="_blank">http://demo.example.com/api/fetch?url=http://169.254.169.254/latest/meta-data/</a><br>
+<small>GET url</small></td>
+<td><code>http://169.254.169.254/latest/meta-data/</code></td>
+<td>Response contains: ami-id
+instance-type
+local-ipv4 -- AWS metadata endpoint accessed</td>
+<td>CWE-918<br><small>A10:2021 Server-Side Request Forgery</small></td>
+<td>Validate and whitelist allowed URL schemes and destinations. Block RFC 1918 and link-local addresses. Use a dedicated proxy with egress filtering.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ea580c">HIGH</span></td>
+<td><strong>DAST-XXE-001</strong><br>XXE Injection in XML Upload</td>
+<td>XXE</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/import" target="_blank">http://demo.example.com/api/import</a><br>
+<small>POST xml_body</small></td>
+<td><code>&lt;?xml version="1.0"?&gt;&lt;!DOCTYPE foo [&lt;!ENTITY xxe SYSTEM "file:///etc/hostname"&gt;]&gt;&</code></td>
+<td>Response contains server hostname: 'prod-web-01'</td>
+<td>CWE-611<br><small>A05:2021 Security Misconfiguration</small></td>
+<td>Disable external entity processing in the XML parser (e.g., set XMLReader.FEAT_EXTERNAL_ENTITIES to false). Use JSON instead of XML where possible.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ca8a04">MEDIUM</span></td>
+<td><strong>DAST-API-002</strong><br>Mass Assignment via API</td>
+<td>API Security</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/v2/users/me" target="_blank">http://demo.example.com/api/v2/users/me</a><br>
+<small>PUT role</small></td>
+<td><code>{"name":"attacker","role":"admin"}</code></td>
+<td>User role changed to admin in response: {"id":1001,"role":"admin"}</td>
+<td>CWE-915<br><small>A01:2021 Broken Access Control</small></td>
+<td>Use a whitelist of allowed fields for each API endpoint. Implement server-side input filtering.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ca8a04">MEDIUM</span></td>
+<td><strong>DAST-AUTH-001</strong><br>Session Cookie Missing Secure Flag</td>
+<td>Authentication & Session</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/login" target="_blank">http://demo.example.com/login</a><br>
+<small>POST Set-Cookie</small></td>
+<td><code>N/A</code></td>
+<td>Set-Cookie: SESSIONID=abc123; Path=/; HttpOnly (missing Secure flag)</td>
+<td>CWE-614<br><small>A07:2021 Identification and Authentication Failures</small></td>
+<td>Set the Secure flag on all session cookies. Enforce HTTPS across the entire application.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ca8a04">MEDIUM</span></td>
+<td><strong>DAST-CSRF-001</strong><br>Cross-Site Request Forgery on Password Change</td>
+<td>Authentication & Session</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/account/change-password" target="_blank">http://demo.example.com/account/change-password</a><br>
+<small>POST csrf_token</small></td>
+<td><code>N/A (no CSRF token present)</code></td>
+<td>Password changed successfully without CSRF token in POST body or headers</td>
+<td>CWE-352<br><small>A01:2021 Broken Access Control</small></td>
+<td>Implement CSRF tokens on all state-changing forms. Use SameSite=Strict on session cookies.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ca8a04">MEDIUM</span></td>
+<td><strong>DAST-XSS-003</strong><br>DOM-Based XSS via URL Fragment</td>
+<td>Cross-Site Scripting</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/dashboard#&lt;img/src=x onerror=alert(1)&gt;" target="_blank">http://demo.example.com/dashboard#&lt;img/src=x onerror=alert(1)&gt;</a><br>
+<small>GET fragment</small></td>
+<td><code>#&lt;img/src=x onerror=alert(1)&gt;</code></td>
+<td>JavaScript document.write() uses location.hash unsanitized</td>
+<td>CWE-79<br><small>A03:2021 Injection</small></td>
+<td>Avoid innerHTML and document.write with user input. Use textContent or a DOM sanitizer.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ca8a04">MEDIUM</span></td>
+<td><strong>DAST-INFO-001</strong><br>Detailed Stack Trace Exposed</td>
+<td>Information Disclosure</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/api/data?id=abc" target="_blank">http://demo.example.com/api/data?id=abc</a><br>
+<small>GET id</small></td>
+<td><code>abc (non-numeric)</code></td>
+<td>Traceback (most recent call last):
+  File "/app/views.py", line 42...
+ValueError: invalid literal for int()</td>
+<td>CWE-209<br><small>A05:2021 Security Misconfiguration</small></td>
+<td>Implement a generic error handler that returns a standard error message. Log detailed errors server-side only.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#ca8a04">MEDIUM</span></td>
+<td><strong>DAST-HDR-001</strong><br>Missing Content-Security-Policy Header</td>
+<td>Security Headers</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/" target="_blank">http://demo.example.com/</a><br>
+<small>GET Content-Security-Policy</small></td>
+<td><code>N/A</code></td>
+<td>Response headers: Server: nginx/1.18, X-Powered-By: Express -- no CSP header present</td>
+<td>CWE-693<br><small>A05:2021 Security Misconfiguration</small></td>
+<td>Implement a strict CSP: default-src 'self'; script-src 'self' 'nonce-...'; object-src 'none'; base-uri 'self'.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#0891b2">LOW</span></td>
+<td><strong>DAST-REDIR-001</strong><br>Open Redirect via next Parameter</td>
+<td>Access Control</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/login?next=https://evil.com/phish" target="_blank">http://demo.example.com/login?next=https://evil.com/phish</a><br>
+<small>GET next</small></td>
+<td><code>https://evil.com/phish</code></td>
+<td>HTTP 302 Location: https://evil.com/phish</td>
+<td>CWE-601<br><small>A01:2021 Broken Access Control</small></td>
+<td>Validate redirect URLs against a whitelist of allowed domains. Use relative paths only.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#0891b2">LOW</span></td>
+<td><strong>DAST-INFO-002</strong><br>Sensitive Data in HTML Comments</td>
+<td>Information Disclosure</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/admin/dashboard" target="_blank">http://demo.example.com/admin/dashboard</a><br>
+<small>GET N/A</small></td>
+<td><code>N/A</code></td>
+<td>&lt;!-- TODO: remove before prod -- DB: prod-mysql.internal:3306, user=app_rw --&gt;</td>
+<td>CWE-615<br><small>A05:2021 Security Misconfiguration</small></td>
+<td>Remove all developer comments from production HTML. Implement a build step to strip comments.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#0891b2">LOW</span></td>
+<td><strong>DAST-HDR-002</strong><br>Missing X-Frame-Options Header</td>
+<td>Security Headers</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/" target="_blank">http://demo.example.com/</a><br>
+<small>GET X-Frame-Options</small></td>
+<td><code>N/A</code></td>
+<td>No X-Frame-Options or frame-ancestors CSP directive present</td>
+<td>CWE-1021<br><small>A05:2021 Security Misconfiguration</small></td>
+<td>Set X-Frame-Options: DENY or use CSP frame-ancestors 'self'.</td>
+</tr>
+<tr>
+<td><span class="sev" style="background:#0891b2">LOW</span></td>
+<td><strong>DAST-HDR-003</strong><br>Server Version Disclosure</td>
+<td>Security Headers</td>
+<td style="word-break:break-all"><a href="http://demo.example.com/" target="_blank">http://demo.example.com/</a><br>
+<small>GET Server</small></td>
+<td><code>N/A</code></td>
+<td>Server: Apache/2.4.49 (Ubuntu)
+X-Powered-By: PHP/7.4.3</td>
+<td>CWE-200<br><small>A05:2021 Security Misconfiguration</small></td>
+<td>Remove or genericize Server and X-Powered-By headers. Configure the web server to suppress version information.</td>
+</tr>
+</tbody>
+</table></div>
+<script>
+function filterSev(s){
+document.querySelectorAll('.filters button').forEach(b=>b.classList.remove('active'));
+event.target.classList.add('active');
+document.querySelectorAll('#findings tbody tr').forEach(r=>{
+if(s==='ALL'){r.style.display='';return}
+const sv=r.querySelector('.sev');
+r.style.display=sv&&sv.textContent===s?'':'none';
+});
+}
+</script></body></html>
